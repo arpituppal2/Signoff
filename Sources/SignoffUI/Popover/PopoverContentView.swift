@@ -233,15 +233,9 @@ public struct PopoverContentView: View {
 
     @ViewBuilder
     private var usageCount: some View {
-        let tracker = UsageTracker.shared
-        if tracker.isOnPaidTier {
-            Text("Unlimited")
-                .foregroundStyle(.green)
-        } else {
-            Text("\(tracker.remainingFreeCount)/\(UsageTracker.freeLimit) free")
-                .foregroundStyle(tracker.remainingFreeCount < 10 ? Color.orange : .secondary)
-                .font(.caption.monospacedDigit())
-        }
+        Text("\(UsageTracker.shared.currentCount) generated")
+            .foregroundStyle(.secondary)
+            .font(.caption)
     }
 
     @ViewBuilder

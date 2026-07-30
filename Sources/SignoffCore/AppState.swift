@@ -14,7 +14,6 @@ public final class AppState: ObservableObject {
     public let generation = GenerationService.shared
     public let shortcuts = ShortcutManager.shared
     public let paste = PasteAutomation.shared
-    public let entitlements = EntitlementManager.shared
 
     /// Whether Input Monitoring is granted — used by the popover to gate shortcut indicators.
     public var inputMonitoringGranted: Bool {
@@ -322,7 +321,8 @@ public final class AppState: ObservableObject {
             lastLatencyMs = nil
             lastStatus = nil
         case .usageLimitReached:
-            generatedText = Self.usageLimitCTA
+            // No longer enforced — Signoff is free. Treat as provider failure.
+            generatedText = nil
             lastProviderKind = nil
             lastLatencyMs = nil
             lastStatus = nil
@@ -347,11 +347,7 @@ public final class AppState: ObservableObject {
     public static let accessibilityDeniedCTA =
         "⌘V didn't land — grant Accessibility in System Settings → Privacy & Security → Accessibility and retry."
     
-    /// CTA copy when the free tier usage limit is reached.
-    public static let usageLimitCTA =
-        "You've used all 100 free signoffs. Upgrade to Signoff Pro for unlimited context-aware generation."
-
-    /// Attempts paste and maps `PasteError` onto `generatedText` + a single audio cue.
+    /// Attempts paste and maps `PasteError onto `generatedText` + a single audio cue.
     @discardableResult
     func commitGeneratedPaste(_ text: String) async -> Bool {
         var pasteSucceeded = false
@@ -387,4 +383,8 @@ public extension Notification.Name {
         Notification.Name("signoff.showWhatsNew")
     static let signoffShowsStatusItemDidChange =
         Notification.Name("signoff.showsStatusItemDidChange")
+    static let openSettingsShortcutTriggered =
+        Notification.Name("signoff.openSettingsShortcutTriggered")
+    static let shortcutTapFailed =
+        Notification.Name("signoff.shortcutTapFailed")
 }

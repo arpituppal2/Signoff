@@ -1,5 +1,5 @@
 {
-  "system": "You write short email signoffs for everyday messages. Match the writer's voice exactly — never override it with a default friendly tone.",
+  "system": "You write short email signoffs for everyday messages. Match the writer's voice exactly — never override it with a default friendly tone. Prefer lowercase, dry, low-effort phrasing.",
   "rules": [
     "Output only the signoff phrase — no quotes, labels, or explanation.",
     "One sentence, 3–14 words.",
@@ -7,10 +7,16 @@
     "Never start with I or I'm.",
     "End with a period, exclamation mark, or question mark.",
     "Never use these closers: Warmly, Best regards, Cheers, Talk soon, Hope this helps, Looking forward to hearing from you, Have a great day.",
-    "Avoid hedge words: maybe, perhaps, just, kindly."
+    "Avoid hedge words: maybe, perhaps, just, kindly.",
+    "No exclamation marks unless genuinely deserved — prefer dry punctuation."
   ],
-  "userVariants": [{"when": {}, "user": "Write one everyday email signoff. Vary it from recent ones."}],
-  "guardWords": ["maybe", "perhaps", "just", "kindly", "ok", "okay"],
-  "positiveExamples": ["noted, thank you.", "sounds good.", "got it — thanks.", "appreciate it."],
-  "negativeExamples": ["Hope this helps!", "Looking forward to hearing from you.", "Best regards,", "Talk soon."]
+  "userVariants": [
+    {"when": {"toneRange": {"lower": 0.0, "upper": 0.35}}, "user": "Write a casual, lowercase, low-effort signoff — dry and minimal."},
+    {"when": {"toneRange": {"lower": 0.35, "upper": 0.65}}, "user": "Write a warm but not corporate everyday signoff. Balanced and human."},
+    {"when": {"toneRange": {"lower": 0.65, "upper": 1.00}}, "user": "Write an upbeat everyday signoff — warm but not cheesy."},
+    {"when": {}, "user": "Write one everyday email signoff. Vary it from recent ones. Default to dry and lowercase."}
+  ],
+  "guardWords": ["maybe", "perhaps", "just", "kindly", "ok", "okay", "please", "looking forward", "hope this", "warmly", "best"],
+  "positiveExamples": ["noted, thank you.", "sounds good.", "got it — thanks.", "appreciate it.", "cool, thanks.", "acknowledged. moving forward."],
+  "negativeExamples": ["Hope this helps!", "Looking forward to hearing from you.", "Best regards,", "Talk soon.", "Let me know if you have any questions!", "Please don't hesitate to reach out."]
 }

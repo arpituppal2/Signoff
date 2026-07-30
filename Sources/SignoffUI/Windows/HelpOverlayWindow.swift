@@ -73,7 +73,7 @@ struct HelpOverlayRootView: View {
         ("Accessibility", "Signoff needs Accessibility to paste without switching focus. Open Privacy & Security → Accessibility to enable."),
         ("Input Monitoring", "Global shortcuts (⌃⌘1–6) need Input Monitoring — separate from Accessibility. Open Privacy & Security → Input Monitoring and enable Signoff."),
         ("Apple Intelligence", "On-device drafting runs when Apple Intelligence is available. Enable it in System Settings → Apple Intelligence & Siri for live generation."),
-        ("Free and open source", "Signoff is free and open source under the MIT license. All features are available to everyone — no Pro, no licenses, no quotas."),
+        ("Free and open source", "Signoff is free and open source under the MIT license. All features are available to everyone — no limits, no Pro, no subscriptions."),
         ("What's New", "Help menu → What's New… opens the changelog. Check for Updates… checks our appcast feed for new versions."),
         ("Updates", "Signoff checks for updates daily when a feed URL is configured. Check manually from About or Help → Check for Updates…"),
         ("Hide menu bar icon", "Settings → General → Show in menu bar. When hidden, Quit is in that pane (or ⌘Q while Settings is open). Re-open Settings with ⌘, while Signoff is frontmost, or by launching Signoff again from Finder / Spotlight. The app stays Dock-less.")

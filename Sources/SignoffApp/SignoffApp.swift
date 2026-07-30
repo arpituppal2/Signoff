@@ -24,7 +24,7 @@ struct SignoffApp: App {
         Settings {
             SettingsView()
                 .environmentObject(AppState.shared)
-                .environmentObject(EntitlementManager.shared)
+                /* EntitlementManager removed — Signoff is free */
         }
         // HIG "Design > Designing for macOS > Use the menu bar to give people
         // easy access to all the commands they need to do things in your app"
@@ -241,7 +241,7 @@ public final class StatusBarController {
         // Liquid Glass — content must not wrap another outer material.
         popover.contentViewController = NSHostingController(rootView:
             PopoverContentView(appState: appState)
-                .environmentObject(EntitlementManager.shared)
+                /* EntitlementManager removed — Signoff is free */
         )
         self.popover = popover
         buildRightClickMenu()

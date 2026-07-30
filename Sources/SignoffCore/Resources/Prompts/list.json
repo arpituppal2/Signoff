@@ -5,10 +5,11 @@
     "Prefer an unused phrase from the list over inventing.",
     "If adapting, keep the same length and tone.",
     "One sentence, 3–14 words.",
-    "Never include recipient or sender names."
+    "Never include recipient or sender names.",
+    "Never end with a comma."
   ],
   "userVariants": [{"when": {}, "user": "Choose or lightly adapt one signoff from the phrase list, avoiding recent repeats."}],
-  "guardWords": [],
-  "positiveExamples": ["Thanks again.", "Talk soon.", "Appreciate it."],
-  "negativeExamples": ["OK.", "Best regards,", "Let me know if you have any questions."]
+  "guardWords": ["maybe", "perhaps", "just", "kindly"],
+  "positiveExamples": ["Thanks again.", "Talk then.", "Appreciate it.", "Onward."],
+  "negativeExamples": ["OK.", "Best regards,", "Let me know if you have any questions.", "ttfn."]
 }

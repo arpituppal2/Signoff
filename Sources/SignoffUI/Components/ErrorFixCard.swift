@@ -110,7 +110,7 @@ public enum SettingsPane: String, Equatable, Hashable, CaseIterable, Identifiabl
         if let pane = SettingsPane(rawValue: raw) { return pane }
         switch raw {
         case "account", "help": return .profile
-        case "pro", "license": return .general
+        case "license": return .general
         case "history": return .privacy
         default: return .general
         }

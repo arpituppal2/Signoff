@@ -274,7 +274,7 @@ struct SetupOnboardingStep: View {
             case .providerFailed(let reason):
                 bucketPreviewError[bucket.id] = reason
             case .usageLimitReached:
-                bucketPreviewError[bucket.id] = "Free tier limit reached"
+                bucketPreviewError[bucket.id] = "Generation unavailable — Signoff is free and unlimited"
             }
         }
     }
@@ -304,7 +304,7 @@ struct SetupOnboardingStep: View {
         case .providerFailed(let reason):
             bucketPreviewError[bucket.id] = reason
         case .usageLimitReached:
-            bucketPreviewError[bucket.id] = "Free tier limit reached"
+            bucketPreviewError[bucket.id] = "Generation failed — Signoff is free and unlimited"
         }
     }
 }

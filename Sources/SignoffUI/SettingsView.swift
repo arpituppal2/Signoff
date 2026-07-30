@@ -158,12 +158,11 @@ public struct SettingsView: View {
                 Toggle("Launch at login", isOn: settingsBoolBinding(\.launchAtLogin))
             }
             Section {
-                LabeledContent("Generations", value: "Unlimited")
-                LabeledContent("Smart Buckets", value: "6 / 6")
+                LabeledContent("Generations", value: "\(UsageTracker.shared.currentCount)")
             } header: {
-                Text("Plan")
+                Text("Usage")
             } footer: {
-                Text("Signoff is free and open source. All features are available to everyone.")
+                Text("Signoff is free and open source (MIT). All features are available to everyone — no limits, no subscriptions.")
                     .foregroundStyle(.secondary)
             }
         }

@@ -73,12 +73,7 @@ public final class GenerationService: ObservableObject {
             return .providerFailed(reason: "Generation already in progress")
         }
 
-        // Usage limit — durable & redownload-proof (see UsageTracker).
-        guard UsageTracker.shared.canGenerate else {
-            usageLimitReached = true
-            return .usageLimitReached
-        }
-        usageLimitReached = false
+        // No usage limit — Signoff is free. All generations are allowed.
 
         inflightRequest = true
         defer { inflightRequest = false }
@@ -110,24 +105,15 @@ public final class GenerationService: ObservableObject {
         // Get the voice profile for discriminative prompting
         let voiceProfile = VoiceProfile.shared
 
-        // ── Paid tier: context-aware FMF (signoff depends on the message) ──
-        if UsageTracker.shared.isOnPaidTier {
-            var contextInstructions = ""
-            if let harvested = await ContextHarvester.shared.harvest() {
-                contextInstructions = "The user is replying to this message: \"\(harvested.messageText)\". "
-                SignoffLogLogger(.generation)
-                    .info("Harvested context from \(harvested.sourceApp, privacy: .public)")
-            }
-            return await executeFMFGeneration(
-                bucketId: bucketId, snapshot: snapshot, template: template,
-                recentTexts: recentTexts, unhingedLevel: unhingedLevel,
-                toneValue: toneValue, postfixMode: postfixMode,
-                customInstructions: customInstructions, phraseList: phraseList,
-                voice: voice, contextInstructions: contextInstructions, t0: t0,
-                voiceProfile: voiceProfile)
+        // ── Context-aware generation (always enabled — Signoff is free) ──
+        var contextInstructions = ""
+        if let harvested = await ContextHarvester.shared.harvest() {
+            contextInstructions = "The user is replying to this message: \"\(harvested.messageText)\". "
+            SignoffLogLogger(.generation)
+                .info("Harvested context from \(harvested.sourceApp, privacy: .public)")
         }
 
-        // ── Free tier: cache-first for instant generation (< 1ms) ──
+        // ── Cache-first for instant generation (< 1ms) ──
         // The cache is filled *only* by Apple Foundation Models, so a hit is a
         // real on-device generation served instantly. No static seed exists.
         if let hit = BucketCache.shared.pop(bucketId: bucketId) {
@@ -138,7 +124,7 @@ public final class GenerationService: ObservableObject {
                 latencyMs: latencyMs, bucketId: bucketId, tone: nil)
             self.lastResult = outcome
             self.lastStatus = nil
-            UsageTracker.shared.incrementCount()
+            UsageTracker.shared.increment()
             await persistence?.recordGeneration(
                 bucketId: outcome.bucketId, text: outcome.text,
                 providerRaw: outcome.providerKind.rawValue, latencyMs: outcome.latencyMs)
@@ -162,7 +148,7 @@ public final class GenerationService: ObservableObject {
                 recentTexts: recentTexts, unhingedLevel: unhingedLevel,
                 toneValue: toneValue, postfixMode: postfixMode,
                 customInstructions: customInstructions, phraseList: phraseList,
-                voice: voice, contextInstructions: nil, t0: t0,
+                voice: voice, contextInstructions: contextInstructions, t0: t0,
                 voiceProfile: voiceProfile)
         }
 
@@ -260,7 +246,7 @@ public final class GenerationService: ObservableObject {
                         latencyMs: latencyMs, bucketId: bucketId, tone: nil)
                     self.lastResult = outcome
                     self.lastStatus = nil
-                    UsageTracker.shared.incrementCount()
+                    UsageTracker.shared.increment()
                     await persistence?.recordGeneration(
                         bucketId: outcome.bucketId, text: outcome.text,
                         providerRaw: outcome.providerKind.rawValue, latencyMs: outcome.latencyMs)

@@ -19,17 +19,6 @@ public final class AppSettings: @unchecked Sendable {
     /// users so major redesigns can re-introduce themselves.
     public var onboardingVersionSeen: Int?
 
-    public var licenseFileBookmark: String?
-    public var licenseFileIssuedAt: Date?
-    public var licenseTier: String?
-    public var licenseExpiresAt: Date?
-
-    public var trialStartedAt: Date?
-    public var trialEndedAt: Date?
-
-    public var quotaWindowStartedAt: Date?
-    public var quotaWindowCount: Int
-
     public var bucketShortcutsJSON: String
     public var launchAtLogin: Bool
     public var verboseLogging: Bool
@@ -57,7 +46,6 @@ public final class AppSettings: @unchecked Sendable {
         self.hasCompletedOnboarding = hasCompletedOnboarding
         self.hasSeenQuickStart = hasSeenQuickStart
         self.dismissedQuickStart = dismissedQuickStart
-        self.quotaWindowCount = 0
         self.bucketShortcutsJSON = bucketShortcutsJSON
         self.launchAtLogin = launchAtLogin
         self.verboseLogging = verboseLogging
