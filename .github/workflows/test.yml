@@ -1,0 +1,71 @@
+# PR test gate: SwiftPM test suite.
+# Per PERFECTION_PLAN_V2_AUTOPLAN_REVIEW.md TASK-8 acceptance.
+#
+# HONEST STATUS: Package.swift requires macOS 26. Hosted runners without that
+# SDK fail closed here (same guard as release.yml). Coverage script
+# tools/coverage-summary.sh is optional — skipped with a warning if missing.
+
+name: Test
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  unit-tests:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Guard — macOS 26 SDK
+        run: |
+          set -euo pipefail
+          SDK_VER="$(xcrun --sdk macosx --show-sdk-version 2>/dev/null || echo 0)"
+          MAJOR="${SDK_VER%%.*}"
+          if [ "${MAJOR}" -lt 26 ]; then
+            echo "::error::Signoff requires macOS 26 SDK (Package.swift). Runner has ${SDK_VER}."
+            exit 1
+          fi
+
+      - name: Select latest Xcode
+        run: |
+          set -euo pipefail
+          XCODE="$(ls -d /Applications/Xcode*.app 2>/dev/null | sort -V | tail -1 || true)"
+          if [ -z "${XCODE}" ]; then
+            echo "::error::No Xcode.app under /Applications"
+            exit 1
+          fi
+          sudo xcode-select -s "${XCODE}/Contents/Developer"
+
+      - name: Test
+        run: |
+          swift test --parallel --scratch-path .build/test
+
+      - name: Coverage delta report (Core >= 85% gate, optional tooling)
+        run: |
+          set -euo pipefail
+          if [ ! -x ./tools/coverage-summary.sh ]; then
+            echo "::warning::tools/coverage-summary.sh missing — skipping coverage gate."
+            exit 0
+          fi
+          CORE_COV=$(./tools/coverage-summary.sh SignoffCore)
+          SLACK=85
+          if [ "$CORE_COV" -lt "$SLACK" ]; then
+            echo "❌ SignoffCore coverage $CORE_COV% < required 85%"
+            exit 1
+          fi
+          echo "✅ SignoffCore coverage: $CORE_COV% (>= 85%)"
+          echo "CORE_COV=$CORE_COV" >> "$GITHUB_ENV"
+
+      - name: Coverage comment (PR)
+        if: github.event_name == 'pull_request' && env.CORE_COV != ''
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: test
+          message: |
+            ```
+            ✅ Unit tests pass
+            SignoffCore coverage: ${{ env.CORE_COV }}%
+            ```

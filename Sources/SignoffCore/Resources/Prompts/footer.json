@@ -1,0 +1,20 @@
+{
+  "system": "You write brief email signoffs that will be followed by a name/title/company footer. Keep the phrase self-contained.",
+  "rules": [
+    "Output only the signoff phrase — no quotes, labels, or explanation.",
+    "Do not include name, title, company, email, phone, or links.",
+    "One sentence, 3–10 words preferred.",
+    "Never start with I or I'm.",
+    "End with a period.",
+    "Never use: Best, Regards, Cheers, Warmly, Sincerely — the footer adds the name.",
+    "Avoid hedge words: maybe, perhaps, just, kindly."
+  ],
+  "userVariants": [
+    {"when": {"postfixMode": "name"}, "user": "Write a brief signoff to be followed by sender's name only."},
+    {"when": {"postfixMode": "fullFooter"}, "user": "Write a brief signoff to be followed by a full contact footer."},
+    {"when": {}, "user": "Write a brief signoff suitable before a signature footer."}
+  ],
+  "guardWords": ["maybe", "perhaps", "just", "kindly", "ok", "okay"],
+  "positiveExamples": ["Thank you for reviewing this.", "Happy to close the loop here.", "Ready for next steps."],
+  "negativeExamples": ["Best regards,", "Sincerely, Jane Doe", "Warmly,"]
+}

@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Signoff does not track users. -->
+    <key>NSPrivacyTracking</key>
+    <false/>
+    <key>NSPrivacyTrackingDomains</key>
+    <array/>
+
+    <!-- Signoff does not collect any data. The app stores settings,
+         profile, and generation history locally on the user's machine
+         via SwiftData + UserDefaults. None of it leaves the device. -->
+    <key>NSPrivacyCollectedDataTypes</key>
+    <array/>
+
+    <!-- "Required Reason" APIs the app touches. Each declaration cites
+         the specific Apple-defined reason code that justifies the API
+         access. Without these declarations, notarization will FAIL with
+         ITMS-91053 / App Privacy Manifest errors. -->
+    <key>NSPrivacyAccessedAPITypes</key>
+    <array>
+        <!-- UserDefaults — used to persist AppSettings (showShortcutHints,
+             colorScheme, hasSeenQuickStart, dismissedQuickStart) per
+             SettingsView. Reason CA92.1 = "Access info from same app,
+             per documentation" (the Apple-defined reason for app-internal
+             UserDefaults use). -->
+        <dict>
+            <key>NSPrivacyAccessedAPIType</key>
+            <string>NSPrivacyAccessedAPICategoryUserDefaults</string>
+            <key>NSPrivacyAccessedAPITypeReasons</key>
+            <array>
+                <string>CA92.1</string>
+            </array>
+        </dict>
+
+        <!-- File timestamp — SwiftData / CoreData read file modification
+             times to detect schema changes during migration. Reason
+             C617.1 = "Access info from same app, per documentation". -->
+        <dict>
+            <key>NSPrivacyAccessedAPIType</key>
+            <string>NSPrivacyAccessedAPICategoryFileTimestamp</string>
+            <key>NSPrivacyAccessedAPITypeReasons</key>
+            <array>
+                <string>C617.1</string>
+            </array>
+        </dict>
+
+        <!-- Disk space — SwiftData estimates the SwiftData store size
+             during quota-window reconciliation. Reason E174.1 = "Write
+             or read file content". -->
+        <dict>
+            <key>NSPrivacyAccessedAPIType</key>
+            <string>NSPrivacyAccessedAPICategoryDiskSpace</string>
+            <key>NSPrivacyAccessedAPITypeReasons</key>
+            <array>
+                <string>E174.1</string>
+            </array>
+        </dict>
+
+        <!-- System boot time — QuotaWindow actor reads boot time to anchor
+             the 7-day rolling window (so quota doesn't reset if the user
+             sleeps the Mac). Reason 35F9.1 = "Access info from same
+             app, per documentation". -->
+        <dict>
+            <key>NSPrivacyAccessedAPIType</key>
+            <string>NSPrivacyAccessedAPICategorySystemBootTime</string>
+            <key>NSPrivacyAccessedAPITypeReasons</key>
+            <array>
+                <string>35F9.1</string>
+            </array>
+        </dict>
+    </array>
+</dict>
+</plist>

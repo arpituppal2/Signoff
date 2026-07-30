@@ -1,0 +1,183 @@
+import XCTest
+import Foundation
+@testable import SignoffCore
+
+final class FoundationModelsIntegrationTests: XCTestCase {
+
+    // MARK: - Prompt JSON schema
+
+    func testPromptTemplates_AllBucketsDecode() {
+        let buckets = ["general", "professional", "unhinged", "custom", "list", "footer"]
+        for name in buckets {
+            let loaded = PromptTemplate.load(bucket: name == "general" ? BucketID.standard.rawValue : name)
+            XCTAssertNotNil(loaded, "Expected Prompts/\(name).json to decode for bucket \(name)")
+            XCTAssertFalse(loaded!.system.isEmpty)
+            XCTAssertFalse(loaded!.rules.isEmpty)
+            XCTAssertFalse(loaded!.userVariants.isEmpty)
+        }
+    }
+
+    func testPromptTemplate_StandardMapsToGeneralResource() {
+        let standard = PromptTemplate.load(bucket: BucketID.standard.rawValue)
+        let general = PromptTemplate.load(bucket: "general")
+        XCTAssertEqual(standard, general)
+        XCTAssertNotNil(standard)
+    }
+
+    func testPromptTemplate_ChooseUserMatchesUnhingedLevel() {
+        let template = PromptTemplate.load(bucket: BucketID.unhinged.rawValue)!
+        let calm = template.chooseUser(unhingedLevel: .calm)
+        let deranged = template.chooseUser(unhingedLevel: .deranged)
+        XCTAssertTrue(calm.lowercased().contains("off-kilter") || calm.lowercased().contains("mild"))
+        XCTAssertTrue(deranged.lowercased().contains("unhinged") || deranged.lowercased().contains("chaotic"))
+        XCTAssertNotEqual(calm, deranged)
+    }
+
+    func testPromptTemplate_ChooseUserMatchesToneRange() {
+        let template = PromptTemplate.load(bucket: BucketID.professional.rawValue)!
+        let formal = template.chooseUser(toneValue: 0.2)
+        let relaxed = template.chooseUser(toneValue: 0.9)
+        XCTAssertTrue(formal.lowercased().contains("formal"))
+        XCTAssertTrue(relaxed.lowercased().contains("relaxed"))
+    }
+
+    func testPromptTemplate_LoadUnknownBucketReturnsNil() {
+        XCTAssertNil(PromptTemplate.load(bucket: "not-a-bucket-\(UUID().uuidString)"))
+        XCTAssertNil(PromptTemplate.load(bucket: ""))
+    }
+
+    func testPromptTemplate_AllBucketIDsLoadWithRequiredSchema() {
+        let liveIDs = BucketID.allCases.filter { $0 != .generalLegacy }
+        for id in liveIDs {
+            let loaded = PromptTemplate.load(bucket: id.rawValue)
+            XCTAssertNotNil(loaded, "PromptTemplate.load must resolve for BucketID.\(id.rawValue)")
+            guard let t = loaded else { continue }
+            XCTAssertFalse(t.system.isEmpty, "\(id) system")
+            XCTAssertFalse(t.rules.isEmpty, "\(id) rules")
+            XCTAssertFalse(t.userVariants.isEmpty, "\(id) userVariants")
+            XCTAssertFalse(t.guardWords.isEmpty, "\(id) guardWords")
+            XCTAssertFalse(t.positiveExamples.isEmpty, "\(id) positiveExamples")
+            XCTAssertFalse(t.negativeExamples.isEmpty, "\(id) negativeExamples")
+        }
+    }
+
+    func testPromptTemplate_FallbackIsDecodableShape() {
+        let f = PromptTemplate.fallback
+        XCTAssertFalse(f.system.isEmpty)
+        XCTAssertGreaterThanOrEqual(f.rules.count, 3)
+        XCTAssertEqual(f.chooseUser(), f.userVariants.first?.user)
+        // load(nil path) must not be confused with the static fallback — they
+        // are separate: missing resources return nil; callers coalesce to .fallback.
+        XCTAssertNil(PromptTemplate.load(bucket: "missing-resource-xyz"))
+    }
+
+    // MARK: - PromptComposer
+
+    func testPromptComposer_KeepsUserDataOutOfInstructions() {
+        let template = PromptTemplate.fallback
+        let profile = UserProfileSnapshot(profile: nil)
+        // Fabricate a snapshot-like profile via process path — use composed with recents.
+        let composed = PromptComposer.compose(
+            template: template,
+            profile: profile,
+            recentTexts: ["Thanks for shipping this.", "Talk Monday."],
+            customInstructions: "Keep it breezy"
+        )
+        XCTAssertFalse(composed.instructions.contains("Thanks for shipping this."))
+        XCTAssertFalse(composed.instructions.contains("Keep it breezy"))
+        XCTAssertTrue(composed.prompt.contains("Thanks for shipping this."))
+        XCTAssertTrue(composed.prompt.contains("Keep it breezy"))
+        XCTAssertTrue(composed.instructions.contains(template.system))
+        XCTAssertTrue(composed.instructions.contains("Rules:"))
+    }
+
+    func testPromptComposer_PromptPrefixExcludesRecents() {
+        let composed = PromptComposer.compose(
+            template: .fallback,
+            profile: UserProfileSnapshot(profile: nil),
+            recentTexts: ["Secret recent phrase XYZ"]
+        )
+        XCTAssertFalse(composed.promptPrefix.contains("Secret recent phrase XYZ"))
+        XCTAssertTrue(composed.prompt.contains("Secret recent phrase XYZ"))
+        // prewarm(promptPrefix:) only helps when prefix is a true head of prompt.
+        XCTAssertTrue(composed.prompt.hasPrefix(composed.promptPrefix))
+    }
+
+    func testPromptComposer_PromptPrefixIncludesStableExamples() {
+        let composed = PromptComposer.compose(
+            template: .fallback,
+            profile: UserProfileSnapshot(profile: nil),
+            recentTexts: []
+        )
+        XCTAssertTrue(composed.promptPrefix.contains("Good examples:"))
+        XCTAssertTrue(composed.promptPrefix.contains("Avoid:"))
+        XCTAssertTrue(composed.prompt.hasPrefix(composed.promptPrefix))
+    }
+
+    // MARK: - Availability (mockable Status — no live model required)
+
+    func testAvailability_UserFacingCauseForEachCase() {
+        let cases: [FoundationModelsAvailability.Status] = [
+            .available,
+            .deviceNotEligible,
+            .appleIntelligenceNotEnabled,
+            .modelNotReady,
+            .unavailable("other"),
+            .unsupportedSDK,
+        ]
+        for status in cases {
+            let cause = FoundationModelsAvailability.userFacingCause(for: status)
+            XCTAssertFalse(cause.isEmpty, "Cause empty for \(status)")
+            XCTAssertFalse(status.titleForFailure.isEmpty)
+        }
+    }
+
+    func testAvailability_AppleIntelligenceDeepLinkIsNotSecurityPrefs() {
+        let url = FoundationModelsAvailability.appleIntelligenceSettingsURL.absoluteString
+        XCTAssertFalse(url.contains("preference.security"),
+                       "FM deep-link must not open Privacy & Security")
+        XCTAssertTrue(url.contains("Siri"),
+                      "FM deep-link should open Apple Intelligence & Siri")
+        XCTAssertTrue(
+            FoundationModelsAvailability.shouldOpenAppleIntelligenceSettings(
+                for: .appleIntelligenceNotEnabled
+            )
+        )
+        XCTAssertFalse(
+            FoundationModelsAvailability.shouldOpenAppleIntelligenceSettings(
+                for: .deviceNotEligible
+            )
+        )
+        XCTAssertFalse(
+            FoundationModelsAvailability.shouldOpenAppleIntelligenceSettings(
+                for: .modelNotReady
+            )
+        )
+    }
+
+    func testAvailability_ProbeDoesNotTrap() {
+        // On CI without Apple Intelligence this returns a non-available status;
+        // the important contract is that it never traps and is Sendable/Equatable.
+        let status = FoundationModelsAvailability.probe()
+        _ = FoundationModelsAvailability.userFacingCause(for: status)
+        XCTAssertNotEqual(status.titleForFailure, "")
+    }
+
+    func testGenerationError_RefusalAndGuardrailCasesExist() {
+        let refused = GenerationError.refused(reason: "nope")
+        let guardrail = GenerationError.guardrailViolation(reason: "blocked")
+        let timeout = GenerationError.timeout
+        XCTAssertEqual(refused, .refused(reason: "nope"))
+        XCTAssertEqual(guardrail, .guardrailViolation(reason: "blocked"))
+        XCTAssertEqual(timeout, .timeout)
+    }
+
+    @MainActor
+    func testFoundationModels_GenerationServiceSmoke() {
+        let service = GenerationService()
+        XCTAssertFalse(service.isRunning)
+        XCTAssertNil(service.lastResult)
+        service.clearStatus()
+        XCTAssertNil(service.lastStatus)
+    }
+}

@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Signoff Sparkle appcast SCAFFOLD — not a shippable feed.
+
+  REPLACE_ME markers must be filled by tools/generate-appcast.sh (which wraps
+  Sparkle's generate_appcast + your private EdDSA key). Do not host this file
+  as-is at https://signoff.app/appcast.xml.
+
+  See docs/SPARKLE.md for EdDSA key generation and CI wiring.
+-->
+<rss version="2.0"
+     xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle"
+     xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <channel>
+    <title>Signoff</title>
+    <link>https://signoff.app</link>
+    <description>Signoff release feed (scaffold)</description>
+    <language>en</language>
+    <item>
+      <title>Signoff 1.0</title>
+      <sparkle:version>1</sparkle:version>
+      <sparkle:shortVersionString>1.0</sparkle:shortVersionString>
+      <pubDate>Fri, 17 Jul 2026 00:00:00 +0000</pubDate>
+      <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
+      <enclosure
+          url="https://github.com/REPLACE_ME_ORG/Signoff/releases/download/v1.0.0/Signoff-1.0.0.dmg"
+          length="0"
+          type="application/octet-stream"
+          sparkle:edSignature="REPLACE_ME" />
+      <description><![CDATA[
+        <p>Scaffold item only. Run <code>./tools/generate-appcast.sh</code> with
+        <code>SPARKLE_PRIVATE_KEY</code> to produce a signed feed.</p>
+      ]]></description>
+    </item>
+  </channel>
+</rss>

@@ -1,0 +1,127 @@
+Building for debugging...
+[Computing dependencies]
+[Provisioning 2 / 2]
+[Provisioning 1 / 2]
+[Constructing description]
+[Pre-planning 1 / 65]
+[Planning deferred tasks]
+[1 / 5]
+[2 / 18] Signoff_SignoffCore
+[5 / 14] Signoff_SignoffCore
+[6 / 14] SignoffCore
+[6 / 15] SignoffCore
+[9 / 25] SignoffCore
+/Users/arpituppal/Downloads/Signoff/Sources/SignoffCore/Generation/Providers.swift:90:38: warning: use of protocol 'Error' as a type must be written 'any Error'; this will be an error in a future Swift language mode [#ExistentialAny]
+ 88 |     }
+ 89 | 
+ 90 |     static func mapURLError(_ error: Error) -> Error {
+    |                                      `- warning: use of protocol 'Error' as a type must be written 'any Error'; this will be an error in a future Swift language mode [#ExistentialAny]
+ 91 |         if let urlError = error as? URLError, urlError.code == .timedOut {
+ 92 |             return GenerationError.timeout
+
+/Users/arpituppal/Downloads/Signoff/Sources/SignoffCore/Generation/Providers.swift:90:48: warning: use of protocol 'Error' as a type must be written 'any Error'; this will be an error in a future Swift language mode [#ExistentialAny]
+ 88 |     }
+ 89 | 
+ 90 |     static func mapURLError(_ error: Error) -> Error {
+    |                                                `- warning: use of protocol 'Error' as a type must be written 'any Error'; this will be an error in a future Swift language mode [#ExistentialAny]
+ 91 |         if let urlError = error as? URLError, urlError.code == .timedOut {
+ 92 |             return GenerationError.timeout
+
+[#ExistentialAny]: <https://docs.swift.org/compiler/documentation/diagnostics/existential-any>
+[10 / 25] SignoffCore
+/Users/arpituppal/Downloads/Signoff/Sources/SignoffCore/Generation/Providers.swift:90:38: warning: use of protocol 'Error' as a type must be written 'any Error'; this will be an error in a future Swift language mode [#ExistentialAny]
+ 88 |     }
+ 89 | 
+ 90 |     static func mapURLError(_ error: Error) -> Error {
+    |                                      `- warning: use of protocol 'Error' as a type must be written 'any Error'; this will be an error in a future Swift language mode [#ExistentialAny]
+ 91 |         if let urlError = error as? URLError, urlError.code == .timedOut {
+ 92 |             return GenerationError.timeout
+
+/Users/arpituppal/Downloads/Signoff/Sources/SignoffCore/Generation/Providers.swift:90:48: warning: use of protocol 'Error' as a type must be written 'any Error'; this will be an error in a future Swift language mode [#ExistentialAny]
+ 88 |     }
+ 89 | 
+ 90 |     static func mapURLError(_ error: Error) -> Error {
+    |                                                `- warning: use of protocol 'Error' as a type must be written 'any Error'; this will be an error in a future Swift language mode [#ExistentialAny]
+ 91 |         if let urlError = error as? URLError, urlError.code == .timedOut {
+ 92 |             return GenerationError.timeout
+
+macro expansion @Model:9:24: warning: redundant conformance of 'UserProfile' to protocol 'Sendable'
+`- /Users/arpituppal/Downloads/Signoff/Sources/SignoffCore/Models/Profile.swift:38:2: note: expanded code originates here
+ 2 | import SwiftData
+ 3 | 
+ 4 | @Model
+   | `- note: in expansion of macro 'Model' on class 'UserProfile' here
+ 5 | public final class UserProfile: @unchecked Sendable {
+   |                    `- note: 'UserProfile' declares conformance to protocol 'Sendable' here
+ 6 |     public var name: String
+ 7 |     public var title: String?
+   :
+36 |         self.updatedAt = updatedAt
+37 |     }
+38 | }
+   +--- macro expansion @Model -----------------------------------------
+   | 7 | @available(swift, deprecated: 5.9, message: "PersistentModels are not Sendable, consider utilizing a ModelActor or use UserProfile's persistentModelID instead")
+   | 8 | @available(*, unavailable, message: "PersistentModels are not Sendable, consider utilizing a ModelActor or use UserProfile's persistentModelID instead")
+   | 9 | extension UserProfile: Sendable {
+   |   |                        `- warning: redundant conformance of 'UserProfile' to protocol 'Sendable'
+   |10 | }
+   +--------------------------------------------------------------------
+39 | 
+40 | public extension UserProfile {
+
+[#ExistentialAny]: <https://docs.swift.org/compiler/documentation/diagnostics/existential-any>
+/Users/arpituppal/Downloads/Signoff/Sources/SignoffCore/Generation/PostProcessor.swift:125:13: warning: variable 'leading' was never mutated; consider changing to 'let' constant
+123 |             out.removeLast()
+124 |         }
+125 |         var leading = out.prefix(while: { !CharacterSet.letters.contains($0.unicodeScalars.first ?? Unicode.Scalar(0)) && $0 != " " })
+    |             `- warning: variable 'leading' was never mutated; consider changing to 'let' constant
+126 |         out = String(out.dropFirst(leading.count))
+127 |         return out
+[12 / 24] SignoffCore
+[14 / 29] SignoffCore
+[17 / 29] SignoffCore
+[18 / 29] SignoffCore
+macro expansion @Model:9:24: warning: redundant conformance of 'UserProfile' to protocol 'Sendable'
+`- /Users/arpituppal/Downloads/Signoff/Sources/SignoffCore/Models/Profile.swift:38:2: note: expanded code originates here
+ 2 | import SwiftData
+ 3 | 
+ 4 | @Model
+   | `- note: in expansion of macro 'Model' on class 'UserProfile' here
+ 5 | public final class UserProfile: @unchecked Sendable {
+   |                    `- note: 'UserProfile' declares conformance to protocol 'Sendable' here
+ 6 |     public var name: String
+ 7 |     public var title: String?
+   :
+36 |         self.updatedAt = updatedAt
+37 |     }
+38 | }
+   +--- macro expansion @Model -----------------------------------------
+   | 7 | @available(swift, deprecated: 5.9, message: "PersistentModels are not Sendable, consider utilizing a ModelActor or use UserProfile's persistentModelID instead")
+   | 8 | @available(*, unavailable, message: "PersistentModels are not Sendable, consider utilizing a ModelActor or use UserProfile's persistentModelID instead")
+   | 9 | extension UserProfile: Sendable {
+   |   |                        `- warning: redundant conformance of 'UserProfile' to protocol 'Sendable'
+   |10 | }
+   +--------------------------------------------------------------------
+39 | 
+40 | public extension UserProfile {
+[19 / 30] SignoffCore
+[20 / 30] SignoffCore
+[21 / 30] SignoffCore
+[22 / 30] SignoffCore
+[23 / 30] SignoffCore
+[25 / 30] SignoffCore
+[26 / 30] SignoffCore
+[27 / 30] SignoffCore
+[28 / 30] SignoffCore
+[28 / 30]
+[28 / 30] SignoffCore
+/Users/arpituppal/Downloads/Signoff/Sources/SignoffCore/Generation/CacheManager.swift:42:28: warning: no 'async' operations occur within 'await' expression
+40 |         if let existing = inFlight["\(bucketId)|\(key)"] { return existing }
+41 |         let task = Task<String?, Never> {
+42 |             defer { Task { await self.clearInFlight("\(bucketId)|\(key)") } }
+   |                            `- warning: no 'async' operations occur within 'await' expression
+43 |             return await run()
+44 |         }
+[30 / 30] SignoffCore
+Build complete! (198.70 sec)
+EXIT:0

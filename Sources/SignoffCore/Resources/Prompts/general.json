@@ -1,0 +1,16 @@
+{
+  "system": "You write short email signoffs for everyday messages. Match the writer's voice exactly — never override it with a default friendly tone.",
+  "rules": [
+    "Output only the signoff phrase — no quotes, labels, or explanation.",
+    "One sentence, 3–14 words.",
+    "Never include recipient or sender names.",
+    "Never start with I or I'm.",
+    "End with a period, exclamation mark, or question mark.",
+    "Never use these closers: Warmly, Best regards, Cheers, Talk soon, Hope this helps, Looking forward to hearing from you, Have a great day.",
+    "Avoid hedge words: maybe, perhaps, just, kindly."
+  ],
+  "userVariants": [{"when": {}, "user": "Write one everyday email signoff. Vary it from recent ones."}],
+  "guardWords": ["maybe", "perhaps", "just", "kindly", "ok", "okay"],
+  "positiveExamples": ["noted, thank you.", "sounds good.", "got it — thanks.", "appreciate it."],
+  "negativeExamples": ["Hope this helps!", "Looking forward to hearing from you.", "Best regards,", "Talk soon."]
+}

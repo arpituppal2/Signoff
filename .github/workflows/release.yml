@@ -1,0 +1,185 @@
+# Release pipeline: tag push → notarized DMG → Sparkle appcast
+# Tags: v*.*.*
+#
+# HONEST STATUS (2026-07):
+# - Package.swift requires macOS 26.0. GitHub-hosted runners often lack that SDK.
+# - Tools: tools/sign-app.sh (codesign), tools/generate-appcast.sh (Sparkle feed),
+#   tools/create-dmg.sh (versioned DMG). See docs/SPARKLE.md.
+# - Entitlements live at Sources/SignoffApp/Signoff.entitlements (NOT Resources/).
+# - Xcode is selected dynamically (newest under /Applications) — not hard-coded 15.4.
+# - build.sh runs with SKIP_NOTARIZATION=1; this workflow notarizes the versioned DMG
+#   via ASC API key (no SignoffNotary keychain profile on the runner).
+# - Prefer ./build.sh locally when DEVELOPER_ID_APPLICATION + notary profile exist.
+# - SU_PUBLIC_ED_KEY must be a real EdDSA public key (not REPLACE_ME) for shipped apps.
+
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-notarize-dmg:
+    runs-on: macos-15
+    env:
+      DEVELOPER_ID_APPLICATION: ${{ secrets.DEVELOPER_ID_APPLICATION }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      APP_STORE_CONNECT_API_KEY_P8: ${{ secrets.APP_STORE_CONNECT_API_KEY_P8 }}
+      APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+      APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+      SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+      # Public EdDSA key embedded into Info.plist at bundle time (build.sh).
+      SU_PUBLIC_ED_KEY: ${{ secrets.SU_PUBLIC_ED_KEY }}
+      SU_FEED_URL: ${{ vars.SU_FEED_URL }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Guard — macOS 26 SDK + shipping secrets
+        run: |
+          set -euo pipefail
+          # Default feed URL when repo variable is unset.
+          if [ -z "${SU_FEED_URL:-}" ]; then
+            export SU_FEED_URL="https://signoff.app/appcast.xml"
+            echo "SU_FEED_URL=${SU_FEED_URL}" >> "$GITHUB_ENV"
+          fi
+          SDK_VER="$(xcrun --sdk macosx --show-sdk-version 2>/dev/null || echo 0)"
+          echo "Detected macOS SDK: ${SDK_VER}"
+          MAJOR="${SDK_VER%%.*}"
+          if [ "${MAJOR}" -lt 26 ]; then
+            echo "::error::Signoff requires macOS 26 SDK (Package.swift + Info.plist LSMinimumSystemVersion=26.0). This runner has ${SDK_VER}."
+            echo "::error::Build on a macOS 26 host, or wait for a GitHub runner image that ships the SDK."
+            exit 1
+          fi
+          if [ -z "${DEVELOPER_ID_APPLICATION:-}" ] || [ -z "${APP_STORE_CONNECT_API_KEY_P8:-}" ]; then
+            echo "::error::Missing DEVELOPER_ID_APPLICATION or App Store Connect API secrets — refusing to publish an unsigned release."
+            exit 1
+          fi
+          if [ -z "${SU_PUBLIC_ED_KEY:-}" ] || [ "${SU_PUBLIC_ED_KEY}" = "REPLACE_ME" ]; then
+            echo "::error::SU_PUBLIC_ED_KEY secret missing or still REPLACE_ME — cannot ship Sparkle updates."
+            echo "::error::Run ./tools/generate-sparkle-keys.sh once; store public key as SU_PUBLIC_ED_KEY secret."
+            exit 1
+          fi
+          ENTITLEMENTS="./Sources/SignoffApp/Signoff.entitlements"
+          if [ ! -f "${ENTITLEMENTS}" ]; then
+            echo "::error::Missing entitlements at ${ENTITLEMENTS}"
+            exit 1
+          fi
+          if [ ! -f "./Sources/SignoffApp/Info.plist" ]; then
+            echo "::error::Missing Sources/SignoffApp/Info.plist"
+            exit 1
+          fi
+          if [ ! -x "./tools/sign-app.sh" ]; then
+            echo "::error::tools/sign-app.sh missing or not executable — see docs/SPARKLE.md."
+            exit 1
+          fi
+          if [ ! -x "./tools/generate-appcast.sh" ]; then
+            echo "::error::tools/generate-appcast.sh missing or not executable — see docs/SPARKLE.md."
+            exit 1
+          fi
+
+      - name: Select latest Xcode
+        run: |
+          set -euo pipefail
+          # Prefer the newest installed Xcode; do not hard-code 15.4 (pre-macOS 26).
+          XCODE="$(ls -d /Applications/Xcode*.app 2>/dev/null | sort -V | tail -1 || true)"
+          if [ -z "${XCODE}" ]; then
+            echo "::error::No Xcode.app found under /Applications"
+            exit 1
+          fi
+          echo "Using ${XCODE}"
+          sudo xcode-select -s "${XCODE}/Contents/Developer"
+
+      - name: Cache SwiftPM
+        uses: actions/cache@v4
+        with:
+          path: .build
+          key: ${{ runner.os }}-spm-${{ hashFiles('Package.resolved') }}
+          restore-keys: ${{ runner.os }}-spm-
+
+      - name: Build (release) via build.sh
+        env:
+          # Notarize the versioned DMG below with ASC API key — do not require
+          # the local keychain profile SignoffNotary on the runner.
+          SKIP_NOTARIZATION: "1"
+        run: |
+          set -euo pipefail
+          # build.sh injects SU_FEED_URL / SU_PUBLIC_ED_KEY and calls tools/sign-app.sh
+          # when DEVELOPER_ID_APPLICATION is set (already gated above).
+          chmod +x ./build.sh ./tools/sign-app.sh ./tools/create-dmg.sh ./tools/generate-appcast.sh
+          ./build.sh
+          test -d ./.build/release/Signoff.app
+          test -f ./.build/release/Signoff.dmg
+
+      - name: Build branded DMG (versioned name for GitHub Release)
+        run: |
+          set -euo pipefail
+          ./tools/create-dmg.sh \
+            "./.build/release/Signoff.app" \
+            "${{ github.ref_name }}"
+          test -f "./Signoff-${GITHUB_REF_NAME#v}.dmg"
+
+      - name: Notarize DMG (notarytool)
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          DMG="./Signoff-${VERSION}.dmg"
+          KEY_FILE="$(mktemp)"
+          trap 'rm -f "${KEY_FILE}"' EXIT
+          printf '%s' "$APP_STORE_CONNECT_API_KEY_P8" > "${KEY_FILE}"
+          xcrun notarytool submit "${DMG}" \
+            --key "${KEY_FILE}" \
+            --key-id "$APP_STORE_CONNECT_KEY_ID" \
+            --issuer "$APP_STORE_CONNECT_ISSUER_ID" \
+            --wait
+          xcrun stapler staple "${DMG}"
+
+      - name: Sparkle appcast (required tooling)
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          DMG="./Signoff-${VERSION}.dmg"
+          if [ -z "${SPARKLE_PRIVATE_KEY:-}" ]; then
+            echo "::error::SPARKLE_PRIVATE_KEY secret missing — cannot sign appcast."
+            exit 1
+          fi
+          # Enclosure URLs point at this GitHub Release asset by default.
+          export SPARKLE_DOWNLOAD_URL_PREFIX="https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/"
+          ./tools/generate-appcast.sh "${DMG}" --ed-key-env SPARKLE_PRIVATE_KEY
+          test -f ./appcast.xml
+          if grep -q 'REPLACE_ME' ./appcast.xml; then
+            echo "::error::appcast.xml still contains REPLACE_ME — refusing release."
+            exit 1
+          fi
+
+      - name: Upload DMG to GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          DMG="./Signoff-${VERSION}.dmg"
+          # Tag push does not create a Release automatically — create/reuse one.
+          if ! gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
+            gh release create "${GITHUB_REF_NAME}" --title "Signoff ${VERSION}" --generate-notes
+          fi
+          gh release upload "${GITHUB_REF_NAME}" "${DMG}" --clobber
+          if [ -f ./appcast.xml ]; then
+            gh release upload "${GITHUB_REF_NAME}" ./appcast.xml --clobber || true
+          fi
+
+      - name: Commit appcast (optional repo mirror)
+        run: |
+          set -euo pipefail
+          if [ ! -f ./appcast.xml ]; then
+            echo "No appcast.xml to commit (expected after generate-appcast.sh)."
+            exit 0
+          fi
+          git config user.name "release-bot"
+          git config user.email "release-bot@signoffapp.com"
+          git add ./appcast.xml
+          git commit -m "ci: regenerate Sparkle appcast for ${GITHUB_REF_NAME}" || true
+          git push || echo "::warning::Could not push appcast commit (non-fast-forward or protected branch)."

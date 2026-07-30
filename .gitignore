@@ -1,0 +1,34 @@
+# Build artifacts
+.build/
+debug/
+*.xcodeproj/
+DerivedData/
+
+# Signoff-specific ignores
+# Demo license fixture lives OUTSIDE the bundle so it cannot accidentally ship
+# as a free Pro bypass in any production build. If you regenerate it locally,
+# do NOT add it back to Resources/ — see tools/dev-fixtures/LICENSE-FIXTURE-DEMO.md.
+tools/dev-fixtures/
+
+# Local dev scratch (operator-side key pairs, keygen logs)
+/tmp/signoff_PRIV_*.txt
+/tmp/signoff_pub_*.txt
+/tmp/signoff_keygen.log
+
+# Sparkle EdDSA private keys / tool caches — never commit private material
+eddsa_priv.key
+*.sparkle_private_key
+.build/sparkle-tools/
+
+# Generated signed appcast at repo root (scaffold lives in Resources/appcast.xml)
+/appcast.xml
+Signoff-*.dmg
+
+# Build/cache directories
+.freebuff/
+.build-paste-harden/
+.paste-final.log
+
+# Standard Swift Package Manager exclusions
+.swiftpm/
+Package.resolved

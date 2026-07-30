@@ -1,0 +1,48 @@
+Building for debugging...
+[Computing dependencies]
+[Provisioning 3 / 12]
+[Provisioning 1 / 12]
+[Using on-disk description]
+[1 / 18]
+[1 / 27]
+[1 / 26]
+[1 / 24] SignoffCore
+[1 / 25] Signoff_SignoffCore
+[1 / 25] Signoff_SignoffApp
+[1 / 24]
+[1 / 50] SignoffCoreTests-product
+[1 / 52] SignoffCore
+[2 / 52] SignoffCore
+[4 / 55] SignoffCore
+macro expansion @Model:9:24: warning: redundant conformance of 'UserProfile' to protocol 'Sendable'
+`- /Users/arpituppal/Downloads/Signoff/Sources/SignoffCore/Models/Profile.swift:38:2: note: expanded code originates here
+ 2 | import SwiftData
+ 3 | 
+ 4 | @Model
+   | `- note: in expansion of macro 'Model' on class 'UserProfile' here
+ 5 | public final class UserProfile: @unchecked Sendable {
+   |                    `- note: 'UserProfile' declares conformance to protocol 'Sendable' here
+ 6 |     public var name: String
+ 7 |     public var title: String?
+   :
+36 |         self.updatedAt = updatedAt
+37 |     }
+38 | }
+   +--- macro expansion @Model -----------------------------------------
+   | 7 | @available(swift, deprecated: 5.9, message: "PersistentModels are not Sendable, consider utilizing a ModelActor or use UserProfile's persistentModelID instead")
+   | 8 | @available(*, unavailable, message: "PersistentModels are not Sendable, consider utilizing a ModelActor or use UserProfile's persistentModelID instead")
+   | 9 | extension UserProfile: Sendable {
+   |   |                        `- warning: redundant conformance of 'UserProfile' to protocol 'Sendable'
+   |10 | }
+   +--------------------------------------------------------------------
+39 | 
+40 | public extension UserProfile {
+[5 / 55] SignoffCore
+[6 / 55] SignoffCore
+[9 / 57] SignoffCore
+[10 / 56] SignoffUI
+[11 / 67] SignoffCore
+[13 / 67] SignoffUI
+[14 / 67] SignoffUI
+[16 / 67] SignoffUI
+EXIT:0

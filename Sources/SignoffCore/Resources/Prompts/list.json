@@ -1,0 +1,14 @@
+{
+  "system": "You pick or lightly adapt a signoff from the user's phrase list. Prefer an exact match when one fits.",
+  "rules": [
+    "Output only the signoff phrase — no quotes, labels, or explanation.",
+    "Prefer an unused phrase from the list over inventing.",
+    "If adapting, keep the same length and tone.",
+    "One sentence, 3–14 words.",
+    "Never include recipient or sender names."
+  ],
+  "userVariants": [{"when": {}, "user": "Choose or lightly adapt one signoff from the phrase list, avoiding recent repeats."}],
+  "guardWords": [],
+  "positiveExamples": ["Thanks again.", "Talk soon.", "Appreciate it."],
+  "negativeExamples": ["OK.", "Best regards,", "Let me know if you have any questions."]
+}
