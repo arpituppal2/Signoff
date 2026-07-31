@@ -16,7 +16,7 @@ Built with Apple Foundation Models on macOS 26+. All generation stays on your de
 - **Privacy-first**: All generation runs on-device via Apple Foundation Models. No data ever leaves your Mac
 - **Completely free** — unlimited generations, no tiers, no accounts, no subscriptions
 - **Context-aware generation**: Signoff reads the message you're replying to via Accessibility and tailors the signoff to match — 100% on your Mac
-- **Smart phrase pool**: 180+ curated signoffs across all buckets, loaded from JSON — nothing hardcoded
+- **Generated, never hardcoded**: Every signoff is produced by an on-device model at request time — nothing is pre-written or read from a static list
 - **macOS Shortcuts.app support**: Exposes "Generate Signoff" and "Copy Last Signoff" as AppIntents
 - **Accessibility-first**: Full VoiceOver support, keyboard navigation, Reduce Motion respect
 - **Sparkle auto-updates**: Signed appcasts, EdDSA-verified delta updates
@@ -107,7 +107,7 @@ Because Signoff is open source and not notarized by Apple (no paid Developer ID)
 │  SignoffCore (business logic)                           │
 │  ┌─────────────────────────────────────────────────┐    │
 │  │  Generation Pipeline                            │    │
-│  │  BucketCache → PhrasePoolLoader → FMProvider    │    │
+│  │  BucketCache → FoundationModelsProvider         │    │
 │  │          ↗ ↖                                     │    │
 │  │  PostProcessor  PromptComposer                  │    │
 │  │  PromptComposer → PromptTemplate (JSON)         │    │
@@ -121,7 +121,6 @@ Because Signoff is open source and not notarized by Apple (no paid Developer ID)
 ├─────────────────────────────────────────────────────────┤
 │  Resources                                              │
 │  • Prompts/ — 6 JSON prompt templates per bucket        │
-│  • Pool/ — 180+ curated signoff phrases in JSON         │
 │  • PrivacyInfo.xcprivacy — Apple privacy manifest       │
 └─────────────────────────────────────────────────────────┘
 ```
@@ -167,7 +166,7 @@ Sources/
 │   ├── Windows/          # Help overlay, shortcut recorder
 │   └── SettingsView.swift
 └── SignoffCore/          # Core logic target
-    ├── Generation/       # FM provider, cache, pool, prompts
+    ├── Generation/       # on-device model, cache, prompts
     ├── Shortcuts/        # Carbon event tap, paste automation
     ├── Models/           # Bucket, Profile, UsageTracker, etc.
     ├── Intents/          # macOS Shortcuts.app integration
