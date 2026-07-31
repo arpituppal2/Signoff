@@ -25,7 +25,7 @@ Built with Apple Foundation Models on macOS 26+. All generation stays on your de
 
 ## Requirements
 
-- **macOS 26.0+** (Sequoia or later)
+- **macOS 26.0+** (Tahoe or later)
 - **Apple Silicon** (M1+) or Intel with Apple Intelligence enabled
 - **Apple Intelligence** must be enabled in System Settings → Apple Intelligence & Siri
 
@@ -180,7 +180,7 @@ Tests/
 
 ## Contributing
 
-Contributions welcome. Please read our [Contributing Guide](CONTRIBUTING.md) first.
+Contributions welcome. Please open an issue first to discuss what you'd like to change.
 
 ```bash
 # Setup
