@@ -21,7 +21,8 @@ public struct SignoffMenuContent: View {
 
     // Splash screen animation state
     @State private var showSplash = !Self.hasLoadedSplash
-    @State private var animateSplash = false
+    @State private var splashDrawn = false
+    @State private var splashScale: CGFloat = 1.0
     @State private var opacity: Double = 1.0
 
     // Single contextual tip — the most relevant TipKit tip, shown one at a time.
@@ -36,12 +37,6 @@ public struct SignoffMenuContent: View {
     public var body: some View {
         ZStack {
             VStack(alignment: .leading, spacing: 0) {
-                header
-
-                Divider()
-                    .overlay(Brand.Surface.divider(for: scheme))
-                    .padding(.horizontal, Brand.Layout.spacingM)
-
                 // Balanced two-column layout: Voices on the left, Compose on the right.
                 HStack(alignment: .top, spacing: 0) {
                     voicesColumn
@@ -71,7 +66,6 @@ public struct SignoffMenuContent: View {
             }
             .frame(width: 640)
             .background(.ultraThinMaterial)
-            .modifier(LiquidGlassBackground())
             .task {
                 await evaluateActiveTip()
                 FoundationModelsAvailability.shared.refresh()
@@ -90,6 +84,8 @@ public struct SignoffMenuContent: View {
             }
 
             // Reveal splash overlay — a quick brand moment, then out of the way.
+            // Writes the signature symbol on, then zooms and fades out — centered
+            // over the popover so it reads as a deliberate reveal, not a stray element.
             if showSplash {
                 ZStack {
                     Brand.Surface.page(for: scheme)
@@ -98,7 +94,8 @@ public struct SignoffMenuContent: View {
                     Image(systemName: "signature")
                         .font(.system(size: 64, weight: .semibold))
                         .foregroundStyle(Brand.ember(for: scheme))
-                        .symbolEffect(.drawOn.individually, isActive: animateSplash)
+                        .symbolEffect(.drawOn.individually, options: .nonRepeating, isActive: splashDrawn)
+                        .scaleEffect(splashScale)
                         .opacity(opacity)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -110,10 +107,12 @@ public struct SignoffMenuContent: View {
                         Self.hasLoadedSplash = true
                         return
                     }
-                    animateSplash = true
+
+                    DispatchQueue.main.async { splashDrawn = true }
 
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) {
                         withAnimation(.easeOut(duration: 0.35)) {
+                            splashScale = 1.3
                             opacity = 0.0
                         }
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
@@ -127,27 +126,6 @@ public struct SignoffMenuContent: View {
             }
         }
         .animation(Brand.Motion.safe(.spring(response: 0.35, dampingFraction: 0.8), reduceMotion: reduceMotion), value: showCopyToast)
-    }
-
-    // MARK: - Header
-
-    private var header: some View {
-        HStack(spacing: Brand.Layout.spacingM) {
-            SignatureMark(isGenerating: appState.isGenerating)
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Signoff")
-                    .font(Brand.Typography.headline)
-                    .foregroundStyle(Brand.Ink.primary(for: scheme))
-                Text("On-device email signoffs")
-                    .font(Brand.Typography.caption1)
-                    .foregroundStyle(Brand.Ink.tertiary(for: scheme))
-            }
-            Spacer(minLength: 4)
-            PrivacyBadge()
-                .tint(Brand.ember(for: scheme))
-        }
-        .padding(.horizontal, Brand.Layout.spacingL)
-        .padding(.vertical, Brand.Layout.spacingM)
     }
 
     // MARK: - Voices (left column)
@@ -395,9 +373,6 @@ public struct SignoffMenuContent: View {
 
     private var bottomBar: some View {
         HStack(spacing: Brand.Layout.spacingS) {
-            permissionStatus
-                .frame(maxWidth: .infinity, alignment: .leading)
-
             Spacer(minLength: 0)
 
             Button {
@@ -424,29 +399,6 @@ public struct SignoffMenuContent: View {
         }
         .padding(.horizontal, Brand.Layout.spacingM)
         .padding(.vertical, Brand.Layout.spacingS)
-    }
-
-    @ViewBuilder
-    private var permissionStatus: some View {
-        if !appState.inputMonitoringGranted || !appState.accessibilityGranted {
-            HStack(spacing: Brand.Layout.spacingXS) {
-                if !appState.inputMonitoringGranted {
-                    Image(systemName: "keyboard")
-                        .font(.caption)
-                        .foregroundStyle(.orange)
-                        .help("Input Monitoring not granted")
-                }
-                if !appState.accessibilityGranted {
-                    Image(systemName: "cursorarrow")
-                        .font(.caption)
-                        .foregroundStyle(.orange)
-                        .help("Accessibility not granted")
-                }
-            }
-            .accessibilityLabel("Permissions needed")
-        } else {
-            EmptyView()
-        }
     }
 
     // MARK: - Actions
@@ -1110,17 +1062,3 @@ private extension SignoffMenuContent {
     }
 }
 
-/// macOS 26 Liquid Glass surface for the menu bar popover. On macOS 26 the
-/// native `glassEffect` replaces the fallback material with the system's
-/// Liquid Glass treatment; below 26 it degrades to the ultra-thin material
-/// already applied above (so this modifier is additive, never lossy).
-@MainActor
-private struct LiquidGlassBackground: ViewModifier {
-    func body(content: Content) -> some View {
-        if #available(macOS 26.0, *) {
-            content.glassEffect()
-        } else {
-            content
-        }
-    }
-}

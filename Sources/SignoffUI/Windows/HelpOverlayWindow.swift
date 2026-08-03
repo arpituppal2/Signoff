@@ -71,9 +71,8 @@ struct HelpOverlayRootView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Title bar with the signature mark + wordmark.
+            // Title bar with the wordmark.
             HStack(spacing: 10) {
-                SignatureMark()
                 Text("Help")
                     .font(.system(size: 17, weight: .semibold, design: .rounded))
                     .foregroundStyle(Brand.Ink.primary(for: scheme))
