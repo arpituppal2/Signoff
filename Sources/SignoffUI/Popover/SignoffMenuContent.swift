@@ -113,23 +113,23 @@ public struct SignoffMenuContent: View {
                         return
                     }
 
-                    // Phase 1: drawOn (0.5s)
+                    // Phase 1: drawOn (1s)
                     DispatchQueue.main.async { splashDrawn = true }
 
-                    // Phase 2: zoom to 5x over 0.1s while also drawing off
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    // Phase 2: zoom to 3x over 0.2s while also drawing off
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
                         splashFadeOut = true
-                        withAnimation(.easeOut(duration: 0.1)) {
-                            splashScale = 5.0
+                        withAnimation(.easeOut(duration: 0.2)) {
+                            splashScale = 3.0
                         }
                     }
 
-                    // Phase 3: fade out 0.15s
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
-                        withAnimation(.easeOut(duration: 0.15)) {
+                    // Phase 3: fade out 0.1s
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                        withAnimation(.easeOut(duration: 0.1)) {
                             opacity = 0.0
                         }
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                             showSplash = false
                             Self.hasLoadedSplash = true
                         }
