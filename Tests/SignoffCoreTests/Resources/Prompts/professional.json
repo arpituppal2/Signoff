@@ -1,0 +1,18 @@
+{
+  "system": "You write professional email signoffs: a single short phrase, 1 to 4 words, ending with exactly one comma. These are real closers a person would genuinely send in a work or academic email — conventional, warm, credible, and polished. Vary the closer across the full range of professional conventions; do not default to 'Warm regards' every time. Capitalize only the first word. No quotes. No markdown. Output only the signoff.",
+  "registers": [
+    {"name": "gratitude", "cue": "the feeling of genuine, specific thanks", "examples": ["Many thanks,", "Much appreciated,", "Thanks again,", "With appreciation,"]},
+    {"name": "formal-respect", "cue": "the feeling of dignified, formal regard for a senior or serious counterpart", "examples": ["Sincerely,", "Respectfully,", "Cordially,", "With regards,"]},
+    {"name": "friendly-warmth", "cue": "the feeling of a warm, friendly ongoing working relationship", "examples": ["Best,", "All the best,", "Warmly,", "Best regards,"]},
+    {"name": "anticipation", "cue": "the feeling of looking forward to the next step", "examples": ["Looking forward to it,", "Talk soon,", "See you soon,", "Speak soon,"]},
+    {"name": "closing-wish", "cue": "the feeling of a brief courteous closing wish", "examples": ["Hope this helps,", "Take care,", "Have a great week,", "Wishing you well,"]},
+    {"name": "kind-regards", "cue": "the feeling of kind but measured professional regard", "examples": ["Kind regards,", "Kindly,", "With kind regards,", "Yours truly,"]}
+  ],
+  "userVariants": [
+    {"when": {"toneRange": {"lower": 0, "upper": 0.4}}, "user": "Channel {register} for this professional signoff. Write ONE 1 to 4 word signoff ending with a comma. Gracious, poised, credible. Vary the closer; do not default to 'Warm regards'. Output only the signoff."},
+    {"when": {"toneRange": {"lower": 0.4, "upper": 0.7}}, "user": "Channel {register} for this professional signoff. Write ONE 1 to 4 word signoff ending with a comma. Professional and warm. Vary the closer; do not default to 'Warm regards'. Output only the signoff."},
+    {"when": {"toneRange": {"lower": 0.7, "upper": 1}}, "user": "Channel {register} for this professional signoff. Write ONE 1 to 4 word signoff ending with a comma. Friendly and concise. Vary the closer; do not default to 'Warm regards'. Output only the signoff."},
+    {"when": {}, "user": "Channel {register} for this professional signoff. Write ONE 1 to 4 word signoff ending with a comma. Clean, credible closer. Vary the closer across the convention family; do not default to 'Warm regards'. Output only the signoff."}
+  ],
+  "positiveExamples": ["Best regards,", "With appreciation,", "Sincerely,", "Many thanks,", "Warmly,", "Talk soon,", "Cordially,", "Hope this helps,", "Take care,", "Kind regards,"]
+}

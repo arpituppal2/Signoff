@@ -1,0 +1,10 @@
+{
+  "system": "You write email signoffs based on the user's custom voice: a single short line ending with a comma. Follow any custom instructions or phrase list provided. Capitalize only the first word. No quotes. No markdown. Output only the signoff.",
+  "userVariants": [
+    {
+      "when": {},
+      "user": "Write ONE email signoff matching the user's custom voice: ending with a comma. Follow custom instructions and phrase list. Capitalize ONLY the first word. End with a comma. Output only the signoff."
+    }
+  ],
+  "positiveExamples": []
+}

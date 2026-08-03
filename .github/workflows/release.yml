@@ -1,0 +1,147 @@
+# Release pipeline: tag push → signed DMG → Sparkle appcast
+# Tags: v*.*.*
+#
+# HONEST STATUS: This workflow requires:
+# - macOS 26 SDK (GitHub runners may not have it yet)
+# - Developer ID Application certificate (secrets.DEVELOPER_ID_APPLICATION)
+# - App Store Connect API key for notarization
+# - Sparkle EdDSA keys
+# Without these, the workflow will skip safely with notices.
+# Local builds with those creds should use ./build.sh instead (docs/BUILDING.md).
+
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-dmg:
+    name: Build DMG (requires macOS 26 SDK + Dev ID)
+    runs-on: macos-15
+    env:
+      DEVELOPER_ID_APPLICATION: ${{ secrets.DEVELOPER_ID_APPLICATION }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      APP_STORE_CONNECT_API_KEY_P8: ${{ secrets.APP_STORE_CONNECT_API_KEY_P8 }}
+      APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+      APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+      SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+      SU_PUBLIC_ED_KEY: ${{ secrets.SU_PUBLIC_ED_KEY }}
+      SU_FEED_URL: ${{ vars.SU_FEED_URL }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check for macOS 26 SDK
+        id: sdk_check
+        run: |
+          set -euo pipefail
+          SDK_VER="$(xcrun --sdk macosx --show-sdk-version 2>/dev/null || echo 0)"
+          echo "Detected macOS SDK: ${SDK_VER}"
+          MAJOR="${SDK_VER%%.*}"
+          if [ "${MAJOR}" -lt 26 ]; then
+            echo "sdk_available=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::macOS 26 SDK not available on this runner (has ${SDK_VER}). Build skipped."
+            exit 0
+          fi
+          echo "sdk_available=true" >> "$GITHUB_OUTPUT"
+
+      - name: Verify required secrets for signed release
+        if: steps.sdk_check.outputs.sdk_available == 'true'
+        id: secrets_check
+        run: |
+          set -euo pipefail
+          missing=()
+          [ -n "${DEVELOPER_ID_APPLICATION:-}" ] || missing+=("DEVELOPER_ID_APPLICATION")
+          [ -n "${APP_STORE_CONNECT_API_KEY_P8:-}" ] || missing+=("APP_STORE_CONNECT_API_KEY_P8")
+          [ -n "${APP_STORE_CONNECT_KEY_ID:-}" ] || missing+=("APP_STORE_CONNECT_KEY_ID")
+          [ -n "${APP_STORE_CONNECT_ISSUER_ID:-}" ] || missing+=("APP_STORE_CONNECT_ISSUER_ID")
+          [ -n "${SPARKLE_PRIVATE_KEY:-}" ] || missing+=("SPARKLE_PRIVATE_KEY")
+          [ -n "${SU_PUBLIC_ED_KEY:-}" ] || missing+=("SU_PUBLIC_ED_KEY")
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "secrets_present=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Missing secrets: ${missing[*]}. Build will proceed but DMG will be unsigned."
+          else
+            echo "secrets_present=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Select latest Xcode
+        if: steps.sdk_check.outputs.sdk_available == 'true'
+        run: |
+          set -euo pipefail
+          XCODE="$(ls -d /Applications/Xcode*.app 2>/dev/null | sort -V | tail -1 || true)"
+          [ -n "${XCODE}" ] || { echo "::error::No Xcode.app found"; exit 1; }
+          echo "Using ${XCODE}"
+          sudo xcode-select -s "${XCODE}/Contents/Developer"
+
+      - name: Build with SKIP_NOTARIZATION=1
+        if: steps.sdk_check.outputs.sdk_available == 'true'
+        run: |
+          SKIP_NOTARIZATION=1 ./build.sh
+
+      - name: Notarize and staple (secrets present)
+        if: steps.sdk_check.outputs.sdk_available == 'true' && steps.secrets_check.outputs.secrets_present == 'true'
+        run: |
+          set -euo pipefail
+          # Wait for build.sh to create the app bundle and DMG
+          APP_BUNDLE=".build/release/Signoff.app"
+          DMG=".build/release/Signoff.dmg"
+
+          # Create a notarization zip
+          ZIP=".build/release/Signoff-notarize.zip"
+          ditto -c -k --keepParent "${APP_BUNDLE}" "${ZIP}"
+
+          # Write API key to temp file
+          KEY_FILE="$(mktemp -t signoff-asc.XXXXXX)"
+          printf '%s' "${APP_STORE_CONNECT_API_KEY_P8}" > "${KEY_FILE}"
+
+          # Submit for notarization
+          xcrun notarytool submit "${ZIP}" \
+            --key "${KEY_FILE}" \
+            --key-id "${APP_STORE_CONNECT_KEY_ID}" \
+            --issuer "${APP_STORE_CONNECT_ISSUER_ID}" \
+            --wait
+
+          # Staple ticket to the app
+          xcrun stapler staple "${APP_BUNDLE}"
+
+          # Re-create DMG with stapled app
+          hdiutil create -volname "Signoff" -srcfolder "${APP_BUNDLE}" -ov -format UDZO "${DMG}"
+
+          rm -f "${ZIP}" "${KEY_FILE}"
+
+      - name: Generate Sparkle appcast
+        if: steps.sdk_check.outputs.sdk_available == 'true' && steps.secrets_check.outputs.secrets_present == 'true'
+        run: |
+          set -euo pipefail
+          # Write private key
+          PRIV_KEY="$(mktemp -t signoff-sparkle.XXXXXX)"
+          printf '%s' "${SPARKLE_PRIVATE_KEY}" > "${PRIV_KEY}"
+
+          # Generate appcast
+          VERSION="${GITHUB_REF_NAME#v}"
+          ./tools/generate-appcast.sh \
+            --version "${VERSION}" \
+            --dmg "Signoff.dmg" \
+            --private-key "${PRIV_KEY}" \
+            --public-key "${SU_PUBLIC_ED_KEY}" \
+            --feed-url "${SU_FEED_URL:-https://github.com/arpituppal2/Signoff/releases/latest/download/appcast.xml}"
+
+          rm -f "${PRIV_KEY}"
+
+      - name: Create GitHub Release with DMG
+        if: steps.sdk_check.outputs.sdk_available == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "Signoff ${{ github.ref_name }}"
+          draft: false
+          prerelease: false
+          files: |
+            .build/release/Signoff.dmg
+            .build/release/appcast.xml
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
