@@ -59,6 +59,9 @@ cp "Sources/SignoffApp/Info.plist" "$APP/Contents/Info.plist"
 # PrivacyInfo.xcprivacy into Resources.
 cp "Sources/SignoffApp/PrivacyInfo.xcprivacy" "$APP/Contents/Resources/"
 
+# App icon (.icns) into Resources.
+cp "Resources/AppIcon.icns" "$APP/Contents/Resources/"
+
 # SPM resource bundles into Contents/Resources — the bundle accessor
 # (Bundle.module) searches Bundle.main.resourceURL, which is Contents/Resources.
 # Signoff_SignoffCore.bundle carries the generation Prompt .json files and is

@@ -158,32 +158,14 @@ final class SignoffDelegate: NSObject, NSApplicationDelegate {
     @objc private func handleShortcutTapFailure(_ notification: Notification) {
         guard let failure = notification.object as? CarbonEventTap.TapFailure else { return }
         if case .eventTapDenied = failure {
-            // If Input Monitoring is already granted by the user, the tap failure
-            // is a system-level chord conflict (e.g. Mission Control owns ⌃⌘N),
-            // not a permission issue. The Shortcuts Settings pane already surfaces
-            // the conflict banner — no need to re-nag.
-            guard !InputMonitoringAccess.isGranted() else { return }
-
-            // Once-per-version gate: repeated launches don't re-show the alert.
-            let buildVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0"
-            let onceKey = "signoff.inputMonitoringAlertShown.\(buildVersion)"
-            guard !UserDefaults.standard.bool(forKey: onceKey) else { return }
-            UserDefaults.standard.set(true, forKey: onceKey)
-
-            Task { @MainActor in presentInputMonitoringAlert() }
-        }
-    }
-
-    @MainActor
-    private func presentInputMonitoringAlert() {
-        AppActivation.forForegroundWindow()
-        let alert = NSAlert()
-        alert.messageText = "Input Monitoring is off"
-        alert.informativeText = "Signoff's global shortcuts need Input Monitoring. You can still generate from the menu bar. Open System Settings → Privacy & Security → Input Monitoring to enable."
-        alert.addButton(withTitle: "Open Settings")
-        alert.addButton(withTitle: "Later")
-        if alert.runModal() == .alertFirstButtonReturn {
-            InputMonitoringAccess.openSystemSettings()
+            // Ad-hoc signed builds: CGPreflightListenEventAccess() returns false
+            // even when the toggle is ON in System Settings because the CDHash
+            // changes each build. The tap failure is the real signal — don't nag
+            // on stale preflight. If it's a chord conflict, Settings → Shortcuts
+            // shows the banner; if it's a permission issue, the user already
+            // opened System Settings once (the toggle is ON) so re-launch is
+            // needed anyway. Skip the alert entirely.
+            return
         }
     }
 
