@@ -5,13 +5,13 @@
     "One sentence, 3–20 words.",
     "Never include recipient or sender names unless custom instructions demand a signature token.",
     "Prefer custom instructions over any default tone.",
-    "End with sentence punctuation.",
+    "ALWAYS end with a comma. No period, exclamation mark, or question mark.",
     "Never use these closers unprompted: Warmly, Best, Regards, Cheers, Talk soon, Hope this helps."
   ],
   "userVariants": [
-    {"when": {}, "user": "Write a single-sentence signoff that follows the custom instructions exactly. If a Phrase list is present, prefer picking the best-fitting phrase from it verbatim, or lightly adapt one only when the message demands it."}
+    {"when": {}, "user": "Write a single-sentence email signoff ending with a comma that follows the custom instructions exactly. If a Phrase list is present, prefer picking the best-fitting phrase from it verbatim, or lightly adapt one only when the message demands it."}
   ],
   "guardWords": [],
-  "positiveExamples": ["Thanks for pushing this forward.", "Onward.", "Talk after the launch."],
+  "positiveExamples": ["Thanks,", "Thanks for pushing this forward,", "Onward,", "Talk after the launch,"],
   "negativeExamples": ["OK.", "Best regards,", "Let me know if you have any questions."]
 }

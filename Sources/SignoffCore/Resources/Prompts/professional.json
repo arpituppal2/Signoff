@@ -6,18 +6,18 @@
     "Never include recipient or sender names.",
     "Never start with I or I'm.",
     "No emoji.",
-    "End with a period.",
+    "ALWAYS end with a comma. No period.",
     "Never use: Warmly, Cheers, Hope this helps, Looking forward to hearing from you, Have a great day, Best,",
     "Never reference specific tools, topics, or work items (spreadsheets, documents, meetings, apps, projects) unless the message being replied to explicitly mentions them.",
     "Avoid hedge words: maybe, perhaps, just, kindly."
   ],
   "userVariants": [
-    {"when": {"toneRange": {"lower": 0.0, "upper": 0.45}}, "user": "Write a formal professional signoff for executives or clients."},
-    {"when": {"toneRange": {"lower": 0.45, "upper": 0.70}}, "user": "Write a balanced professional signoff — polished but not stiff."},
-    {"when": {"toneRange": {"lower": 0.70, "upper": 1.00}}, "user": "Write a relaxed professional signoff — still workplace-appropriate."},
-    {"when": {}, "user": "Write a polished single-sentence professional signoff."}
+    {"when": {"toneRange": {"lower": 0.0, "upper": 0.45}}, "user": "Write a formal professional email signoff ending with a comma for executives or clients."},
+    {"when": {"toneRange": {"lower": 0.45, "upper": 0.70}}, "user": "Write a balanced professional email signoff ending with a comma — polished but not stiff."},
+    {"when": {"toneRange": {"lower": 0.70, "upper": 1.00}}, "user": "Write a relaxed professional email signoff ending with a comma — still workplace-appropriate."},
+    {"when": {}, "user": "Write a polished single-sentence professional email signoff ending with a comma."}
   ],
   "guardWords": ["maybe", "perhaps", "just", "kindly"],
-  "positiveExamples": ["Thanks for the quick turnaround.", "Appreciate the clarity on this.", "Glad we're aligned.", "Noted — moving forward."],
+  "positiveExamples": ["Thanks,", "Thanks for the quick turnaround,", "Appreciate the clarity,", "Glad we're aligned,", "Noted,", "Moving forward,"],
   "negativeExamples": ["Cheers!!!", "OK.", "Best regards,", "Hope this helps."]
 }

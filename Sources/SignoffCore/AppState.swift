@@ -212,20 +212,19 @@ public final class AppState: ObservableObject {
 
     @MainActor
     private func handleShortcutTapFailure(_ failure: CarbonEventTap.TapFailure) {
+        // Tap-install failures are surfaced PASSIVELY: `inputMonitoringGranted`
+        // (drives the TipKit indicator) and `boundShortcutConflicts` (drives the
+        // Settings → Shortcuts conflict banner). We deliberately do NOT hijack
+        // `generatedText` here — `generatedText` is for generation results, and
+        // clobbering it with a permission nag on every launch (the tap is
+        // (re)installed at launch and whenever bindings change) is the wrong
+        // affordance. With ad-hoc signing the bundle signature changes each build,
+        // so `CGEvent.tapCreate` can return nil even when System Settings shows
+        // Input Monitoring toggled on; a launch-time nag cannot fix that and only
+        // annoys. The Shortcuts Settings pane is where the user resolves it.
         switch failure {
-        case .eventTapDenied:
-            if !InputMonitoringAccess.isGranted() {
-                generatedText = "Shortcuts unavailable — grant Input Monitoring in System Settings → Privacy & Security → Input Monitoring."
-            } else {
-                generatedText = "Shortcuts unavailable — System is holding the chords. Open Settings → Shortcuts to rebind or switch to ⌥⌘."
-            }
-            Task { await SystemSoundClient.shared.play(.basso) }
-        case .runLoopSourceCreateFailed:
-            generatedText = "Shortcut hub failed to wire (run-loop source). Restart Signoff."
-            Task { await SystemSoundClient.shared.play(.basso) }
-        case .tapEnableFailed:
-            generatedText = "System is holding your chords — open Settings → Shortcuts to rebind or switch to ⌥⌘."
-            Task { await SystemSoundClient.shared.play(.basso) }
+        case .eventTapDenied, .runLoopSourceCreateFailed, .tapEnableFailed:
+            break
         }
     }
 

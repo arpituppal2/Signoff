@@ -50,11 +50,12 @@ public struct SettingsView: View {
                 .tabItem { Label(SettingsPane.advanced.title, systemImage: SettingsPane.advanced.systemImage) }
                 .tag(SettingsPane.advanced)
         }
-        // System-Settings-style collapsible sidebar. `.sidebarAdaptable` shows a
-        // native sidebar list; the leading toolbar toggle hides/shows it, and the
-        // panes remain reachable as a compact top tab bar when collapsed.
-        .tabViewStyle(.sidebarAdaptable)
-        .frame(minWidth: 720, minHeight: 480)
+        // Top toolbar tabs — the macOS convention for a utility app's Settings.
+        // The `.sidebarAdaptable` sidebar (a System Settings carryover) buried the
+        // panes behind a collapse toggle and added friction; top tabs keep every
+        // pane one click away and match how focused macOS tools present prefs.
+        .tabViewStyle(.automatic)
+        .frame(minWidth: 560, idealWidth: 600, minHeight: 460)
         .onAppear {
             applyPaneFromNotification(nil)
             fmAvailability.refresh()
@@ -547,6 +548,7 @@ public struct SettingsView: View {
         Form {
             Section {
                 LabeledContent("Version", value: appVersion)
+                LabeledContent("Made by", value: "Arpit Uppal")
             }
             Section {
                 Button {
@@ -557,12 +559,6 @@ public struct SettingsView: View {
                     Label("Buy me a coffee", systemImage: "cup.and.saucer.fill")
                 }
                 .accessibilityHint("Open Arpit Uppal's Buy Me a Coffee page in your browser")
-            } footer: {
-                Text("Signoff is free. If it saves you a clunky signoff now and then, a coffee is appreciated.")
-                    .foregroundStyle(.secondary)
-            }
-            Section {
-                LabeledContent("Made by", value: "Arpit Uppal")
             }
         }
         .formStyle(.grouped)

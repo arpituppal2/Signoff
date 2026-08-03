@@ -250,19 +250,11 @@ private final class SignoffMenuState: ObservableObject {
 
 @MainActor
 struct MenuBarLabelView: View {
-    @State private var animate = false
-
+    /// Static signature glyph — no per-tap animation so the menu bar frame
+    /// never shifts width mid-interaction. A draw animation re-triggered on
+    /// every `.signoffMenuBarAppUsed` notification caused the menubar item to
+    /// jump, which is disqualifying for a pedestal indicator.
     var body: some View {
         Image(systemName: "signature")
-            .symbolEffect(.drawOn.individually, isActive: animate)
-            .onReceive(NotificationCenter.default.publisher(for: .signoffMenuBarAppUsed)) { _ in
-                animate = false
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                    animate = true
-                }
-            }
-            .onAppear {
-                animate = true
-            }
     }
 }

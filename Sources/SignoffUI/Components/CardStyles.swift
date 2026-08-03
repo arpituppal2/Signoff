@@ -46,14 +46,6 @@ public struct SignatureCardView: View {
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
-            // Amber underline — the signature flourish.
-            LinearGradient(
-                colors: [Brand.ember(for: scheme).opacity(0.85), Brand.ember(for: scheme).opacity(0)],
-                startPoint: .leading, endPoint: .trailing
-            )
-            .frame(height: 2)
-            .clipShape(Capsule())
-
             if let providerKind {
                 HStack(spacing: 5) {
                     Image(systemName: providerKind.badgeSystemImage)

@@ -165,7 +165,7 @@ Sources/
 ├── SignoffApp/           # Executable target — @main, MenuBarExtra, carbon shortcuts
 ├── SignoffUI/            # UI framework
 │   ├── Popover/          # Menu-bar surfaces (SignoffMenuContent, PopoverContentView)
-│   ├── Components/       # Brand tokens, cards, badges, animated SignatureMark
+│   ├── Components/       # Brand tokens, cards, badges
 │   ├── Windows/          # Help overlay, shortcut recorder
 │   └── SettingsView.swift
 └── SignoffCore/          # Business logic

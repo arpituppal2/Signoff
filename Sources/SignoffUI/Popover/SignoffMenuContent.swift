@@ -30,13 +30,22 @@ public struct SignoffMenuContent: View {
 
     @State private var dismissedFMCTA = false
 
+    /// Toggles the history page; set via the clock icon button in the bottom bar.
+    @State private var showHistory = false
+
     public static var hasLoadedSplash = false
 
     public init() {}
 
     public var body: some View {
         ZStack {
-            VStack(alignment: .leading, spacing: 0) {
+            if showHistory {
+                HistoryPageView(onBack: { showHistory = false })
+                    .frame(width: 640)
+                    .frame(minHeight: 480)
+                    .background(popoverGlass)
+            } else {
+                VStack(alignment: .leading, spacing: 0) {
                 // Balanced two-column layout: Voices on the left, Compose on the right.
                 HStack(alignment: .top, spacing: 0) {
                     voicesColumn
@@ -49,15 +58,6 @@ public struct SignoffMenuContent: View {
                     tipStrip
                 }
 
-                if !appState.recentGenerations.isEmpty && !appState.isGenerating {
-                    recentHistorySection
-                        .padding(.horizontal, Brand.Layout.spacingM)
-                        .padding(.vertical, Brand.Layout.spacingXS)
-                        .transition(
-                            reduceMotion ? .opacity : .opacity.combined(with: .move(edge: .top))
-                        )
-                }
-
                 Divider()
                     .overlay(Brand.Surface.divider(for: scheme))
                     .padding(.horizontal, Brand.Layout.spacingM)
@@ -65,13 +65,19 @@ public struct SignoffMenuContent: View {
                 bottomBar
             }
             .frame(width: 640)
-            .background(.ultraThinMaterial)
+            // Solid ink/paper page fill — the "Ink on Paper" brand metaphor. A
+            // translucent material here stacked over every card's own material
+            // made the popover read as indistinct glass-on-glass; an opaque
+            // page gives the cards a clear ground to rest on.
+            .background(popoverGlass)
             .task {
                 await evaluateActiveTip()
                 FoundationModelsAvailability.shared.refresh()
                 appState.hasOpenedMenuBar = true
                 syncTipParameters(appState: appState)
                 NotificationCenter.default.post(name: .signoffMenuBarAppUsed, object: nil)
+            }
+
             }
 
             // Copy confirmation toast overlay
@@ -128,6 +134,23 @@ public struct SignoffMenuContent: View {
         .animation(Brand.Motion.safe(.spring(response: 0.35, dampingFraction: 0.8), reduceMotion: reduceMotion), value: showCopyToast)
     }
 
+    /// Frosted glass popover background — .ultraThinMaterial (50 % translucent)
+    /// with a whisper of the selected bucket's accent colour so the popover
+    /// reads as transparent glass without being colourless.
+    private var popoverGlass: some View {
+        ZStack {
+            Color(nsColor: .windowBackgroundColor).opacity(0.05)
+            selectedBucketTint.opacity(0.04)
+        }
+        .background(.ultraThinMaterial)
+    }
+
+    /// The selected bucket's accent, or the brand neutral if nothing is selected.
+    private var selectedBucketTint: Color {
+        guard let bucket = appState.selectedBucket else { return Brand.ember(for: scheme) }
+        return Brand.accent(for: bucket.id, scheme: scheme)
+    }
+
     // MARK: - Voices (left column)
 
     private var voicesColumn: some View {
@@ -171,13 +194,6 @@ public struct SignoffMenuContent: View {
     private var composeColumn: some View {
         VStack(alignment: .leading, spacing: Brand.Layout.spacingS) {
             sectionLabel("Compose", systemImage: "square.and.pencil")
-
-            if let bucket = appState.selectedBucket {
-                Text(bucket.toneLabel)
-                    .font(Brand.Typography.caption1)
-                    .foregroundStyle(Brand.accent(for: bucket.id, scheme: scheme))
-                    .lineLimit(2)
-            }
 
             // Primary + secondary actions, full-width and obviously interactive.
             // "Generate" previews the signoff first (copy to clipboard, no auto-paste),
@@ -376,6 +392,24 @@ public struct SignoffMenuContent: View {
             Spacer(minLength: 0)
 
             Button {
+                showHistory = true
+            } label: {
+                Image(systemName: "clock.arrow.circlepath")
+                    .frame(width: 28, height: 28)
+            }
+            .buttonStyle(.bordered)
+            .help("History")
+            .accessibilityLabel("History")
+            .accessibilityHint("View your recent signoffs.")
+
+            Button {
+                // Close the popover first (it is open here) before revealing
+                // Settings, so the user isn't left with the popover floating
+                // over the Settings window. Closing-then-opening avoids the
+                // race where the Settings window would auto-dismiss the popover
+                // and a follow-up toggle would reopen it. `.toggleMenuBarPopover`
+                // routes through the app delegate, which owns MenuBarExtra control.
+                NotificationCenter.default.post(name: .toggleMenuBarPopover, object: nil)
                 NotificationCenter.default.post(name: .openSettingsShortcutTriggered, object: nil)
             } label: {
                 Image(systemName: "gearshape")
@@ -502,11 +536,6 @@ private struct MenuBucketRow: View {
                     Text(bucket.name)
                         .font(nameFont)
                         .foregroundStyle(primaryInk)
-                        .lineLimit(1)
-                    Text(bucket.toneLabel)
-                        .font(toneFont)
-                        .foregroundStyle(tertiaryInk)
-                        .textCase(.lowercase)
                         .lineLimit(1)
                 }
 
@@ -706,7 +735,6 @@ private struct RecentHistorySection: View {
                             thumbsDownAction: { onThumbsDown(gen) },
                             trashAction: { onTrash(gen) }
                         )
-                        .staggeredEntrance(index: index, reduceMotion: reduceMotion)
                     }
                 }
                 .padding(.horizontal, Brand.Layout.spacingXS)
@@ -789,15 +817,6 @@ private struct RecentSignoffCard: View {
                 .buttonStyle(GlassButtonStyle(scheme: scheme, accent: bucketAccent))
                 .help("Copy to clipboard")
                 .accessibilityLabel("Copy to clipboard")
-
-                Button(action: shareAction) {
-                    Image(systemName: "square.and.arrow.up")
-                        .font(.caption.weight(.medium))
-                        .frame(width: 28, height: 28)
-                }
-                .buttonStyle(GlassButtonStyle(scheme: scheme, accent: bucketAccent))
-                .help("Share as image")
-                .accessibilityLabel("Share as image")
 
                 Button(action: thumbsUpAction) {
                     Image(systemName: generation.isFavorite ? "hand.thumbsup.fill" : "hand.thumbsup")
@@ -884,23 +903,13 @@ private struct ShareableSignoffCard: View {
 
     var body: some View {
         ZStack {
-            // Parchment background with subtle texture
+            // Parchment background — the "Ink on Paper" page.
             RoundedRectangle(cornerRadius: Brand.Layout.radiusL, style: .continuous)
                 .fill(Brand.Surface.page(for: scheme))
 
-            // Subtle ink wash edge
+            // Single amber hairline border — restrained, brand-coded.
             RoundedRectangle(cornerRadius: Brand.Layout.radiusL, style: .continuous)
-                .stroke(
-                    LinearGradient(
-                        colors: [
-                            Brand.accent(for: bucketId, scheme: scheme).opacity(0.4),
-                            Brand.accent(for: bucketId, scheme: scheme).opacity(0.0)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ),
-                    lineWidth: 2
-                )
+                .stroke(Brand.ember(for: scheme).opacity(0.35), lineWidth: Brand.Layout.borderWeight)
 
             VStack(alignment: .leading, spacing: Brand.Layout.spacingL) {
                 // Header with bucket personality
@@ -914,9 +923,10 @@ private struct ShareableSignoffCard: View {
                             .foregroundStyle(Brand.Ink.tertiary(for: scheme))
                     }
                     Spacer()
-                    Image(systemName: "leaf.fill")
-                        .font(.system(size: 24))
-                        .foregroundStyle(Brand.accent(for: bucketId, scheme: scheme).opacity(0.6))
+                    // Brand mark — the signature glyph in the bucket's tonal ink.
+                    Image(systemName: "signature")
+                        .font(.system(size: 24, weight: .semibold))
+                        .foregroundStyle(Brand.accent(for: bucketId, scheme: scheme).opacity(0.7))
                 }
 
                 // The signoff text — beautifully typeset
@@ -1001,64 +1011,217 @@ private struct CopyToastView: View {
     }
 }
 
-private extension SignoffMenuContent {
-    /// Insert the recent history section into the view hierarchy
-    var recentHistorySection: some View {
-        RecentHistorySection(
-            generations: appState.recentGenerations,
-            onSelect: { gen in
-                appState.generatedText = gen.text
-                showToast("Loaded \"\(gen.text.prefix(30))…\"")
-            },
-            onShare: { gen in
-                shareSignoff(gen)
-            },
-            onCopy: { gen in
-                NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString(gen.text, forType: .string)
-                Task { @MainActor in
-                    await SystemSoundClient.shared.play(.tink)
-                    NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .now)
+// MARK: - History Page
+
+/// Full-page signed-off history — replaces the bottom carousel. Accessed via the
+/// clock icon button in the menu bar popover's bottom bar. Same 640 pt width as
+/// the main popover surface, with a back button to return.
+@MainActor
+private struct HistoryPageView: View {
+    let onBack: () -> Void
+    @EnvironmentObject private var appState: AppState
+    @Environment(\.colorScheme) private var scheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var toastMessage = ""
+    @State private var showToast = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // Header with back button
+            HStack {
+                Button {
+                    onBack()
+                } label: {
+                    Label("Back", systemImage: "chevron.left")
+                        .font(.callout.weight(.medium))
                 }
-                showToast("Copied \"\(gen.text.prefix(30))…\"")
-            },
-            onThumbsUp: { gen in
-                appState.applyFeedback(gen, liked: true)
-                showToast("Liked — I'll write more like this.")
-            },
-            onThumbsDown: { gen in
-                appState.applyFeedback(gen, liked: false)
-                showToast("Noted — I'll avoid this style.")
-            },
-            onTrash: { gen in
-                appState.deleteGeneration(gen)
-                showToast("Removed from history.")
+                .buttonStyle(.borderless)
+                .accessibilityLabel("Back to main view")
+
+                Spacer()
+
+                Text("History")
+                    .font(.headline)
+                    .foregroundStyle(Brand.Ink.primary(for: scheme))
             }
-        )
+            .padding(.horizontal, Brand.Layout.spacingM)
+            .padding(.vertical, Brand.Layout.spacingS)
+
+            Divider()
+                .overlay(Brand.Surface.divider(for: scheme))
+
+            if appState.recentGenerations.isEmpty {
+                emptyHistory
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: Brand.Layout.spacingS) {
+                        ForEach(appState.recentGenerations) { gen in
+                            HistoryRow(
+                                generation: gen,
+                                onCopy: { copyGen(gen) },
+                                onThumbsUp: { appState.applyFeedback(gen, liked: true) },
+                                onThumbsDown: { appState.applyFeedback(gen, liked: false) },
+                                onTrash: { appState.deleteGeneration(gen) },
+                                onSelect: { appState.generatedText = gen.text }
+                            )
+                        }
+                    }
+                    .padding(Brand.Layout.spacingM)
+                }
+            }
+        }
+        .overlay(alignment: .bottom) {
+            if showToast {
+                CopyToastView(message: toastMessage)
+                    .padding(.bottom, 12)
+                    .transition(.opacity)
+            }
+        }
+        .animation(.easeOut(duration: 0.2), value: showToast)
     }
 
-    /// Export signoff as shareable image
-    private func shareSignoff(_ generation: SignoffGeneration) {
-        let card = ShareableSignoffCard(
-            text: generation.text,
-            bucketId: generation.bucketId,
-            providerKind: GenerationProviderKind(rawValue: generation.providerRaw),
-            userName: appState.profile.name.isEmpty ? nil : appState.profile.name
-        )
-
-        let renderer = ImageRenderer(content: card)
-        renderer.scale = 2.0 // Retina
-        if let nsImage = renderer.nsImage {
-            let pasteboard = NSPasteboard.general
-            pasteboard.clearContents()
-            pasteboard.writeObjects([nsImage])
-
-            Task { @MainActor in
-                await SystemSoundClient.shared.play(.pop)
-                NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .now)
-            }
-            showToast("Signoff copied as image")
+    private var emptyHistory: some View {
+        VStack(spacing: Brand.Layout.spacingM) {
+            Image(systemName: "clock.arrow.circlepath")
+                .font(.system(size: 32, weight: .semibold))
+                .foregroundStyle(Brand.Ink.tertiary(for: scheme))
+            Text("No History Yet")
+                .font(Brand.Typography.headline)
+                .foregroundStyle(Brand.Ink.primary(for: scheme))
+            Text("Generated signoffs will appear here.")
+                .font(Brand.Typography.callout)
+                .foregroundStyle(Brand.Ink.secondary(for: scheme))
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func copyGen(_ gen: SignoffGeneration) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(gen.text, forType: .string)
+        Task { @MainActor in
+            await SystemSoundClient.shared.play(.tink)
+            NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .now)
+        }
+        flashToast("Copied")
+    }
+
+    private func flashToast(_ msg: String) {
+        toastMessage = msg
+        withAnimation(.easeOut(duration: 0.15)) { showToast = true }
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 1_500_000_000)
+            withAnimation(.easeOut(duration: 0.15)) { showToast = false }
+        }
+    }
+}
+
+/// A single history-row — signoff text, bucket badge, timestamp, and a compact
+/// action bar (copy, thumbs, trash). No share button.
+@MainActor
+private struct HistoryRow: View {
+    let generation: SignoffGeneration
+    let onCopy: () -> Void
+    let onThumbsUp: () -> Void
+    let onThumbsDown: () -> Void
+    let onTrash: () -> Void
+    let onSelect: () -> Void
+
+    @Environment(\.colorScheme) private var scheme
+    @State private var isHovered = false
+
+    private var bucketAccent: Color {
+        Brand.accent(for: generation.bucketId, scheme: scheme)
+    }
+
+    private var displayBucketName: String {
+        switch generation.bucketId {
+        case BucketID.standard.rawValue: "Normal"
+        case BucketID.unhinged.rawValue:  "Cynical"
+        default: generation.bucketId.capitalized
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Brand.Layout.spacingXS) {
+            // Header: bucket chip + timestamp
+            HStack {
+                Circle()
+                    .fill(bucketAccent)
+                    .frame(width: 6, height: 6)
+                Text(displayBucketName)
+                    .font(Brand.Typography.caption2.weight(.medium))
+                    .foregroundStyle(Brand.Ink.tertiary(for: scheme))
+                Spacer()
+                Text(generation.createdAt, style: .relative)
+                    .font(Brand.Typography.caption2)
+                    .foregroundStyle(Brand.Ink.tertiary(for: scheme).opacity(0.6))
+            }
+
+            // Signoff text
+            Button(action: onSelect) {
+                Text(generation.text)
+                    .font(Brand.Typography.signoff)
+                    .foregroundStyle(Brand.Ink.primary(for: scheme))
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("Click to set as current signoff")
+
+            // Action bar — copy, thumbs up/down, trash. No share.
+            HStack(spacing: Brand.Layout.spacingXS) {
+                SmallIconButton(symbol: "doc.on.doc", action: onCopy, help: "Copy")
+                SmallIconButton(
+                    symbol: generation.isFavorite ? "hand.thumbsup.fill" : "hand.thumbsup",
+                    tint: generation.isFavorite ? .green : nil,
+                    action: onThumbsUp,
+                    help: generation.isFavorite ? "Favorited" : "Thumbs up"
+                )
+                SmallIconButton(symbol: "hand.thumbsdown", action: onThumbsDown, help: "Thumbs down")
+                SmallIconButton(symbol: "trash", action: onTrash, help: "Delete")
+            }
+        }
+        .padding(Brand.Layout.spacingS)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: Brand.Layout.radiusS, style: .continuous)
+                .fill(Brand.Surface.card(for: scheme).opacity(scheme.isDark ? 0.5 : 0.6))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: Brand.Layout.radiusS, style: .continuous)
+                .stroke(
+                    isHovered ? bucketAccent.opacity(0.25) : Brand.Surface.divider(for: scheme),
+                    lineWidth: Brand.Layout.hairline
+                )
+        )
+        .onHover { h in
+            withAnimation(.easeOut(duration: 0.12)) { isHovered = h }
+        }
+    }
+}
+
+/// Tiny 28×28pt icon button — used in the history row action bar.
+@MainActor
+private struct SmallIconButton: View {
+    let symbol: String
+    var tint: Color? = nil
+    let action: () -> Void
+    let help: String
+
+    @Environment(\.colorScheme) private var scheme
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.caption.weight(.medium))
+                .frame(width: 28, height: 28)
+        }
+        .buttonStyle(.borderless)
+        .help(help)
+        .accessibilityLabel(help)
     }
 }
 
