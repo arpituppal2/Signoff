@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleName</key>
+	<string>Signoff</string>
+	<key>CFBundleDisplayName</key>
+	<string>Signoff</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.signoff.app</string>
+	<key>CFBundleVersion</key>
+	<string>1</string>
+	<key>CFBundleShortVersionString</key>
+	<string>1.0.0</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleExecutable</key>
+	<string>Signoff</string>
+	<!-- Must match Package.swift platforms: [.macOS("26.0")] — do not claim 15.x. -->
+	<key>LSMinimumSystemVersion</key>
+	<string>26.0</string>
+	<!-- Agent / menu-bar app: hide Dock icon. Prefer plist over relying solely
+	     on NSApp.setActivationPolicy(.accessory) at launch. -->
+	<key>LSUIElement</key>
+	<true/>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<!-- AppIcon.icns is produced from Resources/Assets.xcassets/AppIcon.appiconset
+	     by build.sh (placeholder until designer Icon Composer asset lands). -->
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
+	<!-- TCC usage descriptions required for notarization and user transparency.
+	     NSAccessibilityUsageDescription: required for AXIsProcessTrusted / ⌘V synthesis.
+	     NSInputMonitoringUsageDescription: required for CGEvent.tapCreate / global shortcuts.
+	     NSAppleEventsUsageDescription: required for com.apple.security.automation.apple-events entitlement. -->
+	<key>NSAccessibilityUsageDescription</key>
+	<string>Signoff needs Accessibility access to paste generated sign-offs at your cursor in any app.</string>
+	<key>NSInputMonitoringUsageDescription</key>
+	<string>Signoff needs Input Monitoring to listen for global keyboard shortcuts (⌃⌘1–4) so you can generate sign-offs from any app.</string>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>Signoff uses Apple Events only when needed to paste a generated sign-off into the app you are typing in.</string>
+	<!-- Proprietary update system — Sparkle-free since 2026.
+	     build.sh overwrites SUFeedURL when bundling.
+	     Default points at a GitHub release asset (publish appcast.json
+	     alongside future releases to enable auto-update). -->
+	<key>SUFeedURL</key>
+	<string>https://github.com/arpituppal2/Signoff/releases/latest/download/appcast.json</string>
+</dict>
+</plist>

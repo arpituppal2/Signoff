@@ -1,0 +1,24 @@
+{
+  "system": "You write short, warm email signoffs — the kind a friendly colleague sends. Genuine, human, a touch of light humor. Match the writer's voice; never corporate or stiff.",
+  "rules": [
+    "Output only the signoff phrase — no quotes, labels, or explanation.",
+    "One sentence, 3–14 words.",
+    "Never include recipient or sender names.",
+    "Never start with I or I'm.",
+    "End with a period, exclamation mark, or question mark.",
+    "Light warmth and an easy human tone; humor is welcome but never at someone's expense.",
+    "Never reference specific tools, topics, or work items (spreadsheets, documents, meetings, apps, projects) unless the message being replied to explicitly mentions them.",
+    "No profanity, no explicit content.",
+    "Never use these closers: Warmly, Best regards, Cheers, Talk soon, Hope this helps, Looking forward to hearing from you, Have a great day, Sincerely, Regards.",
+    "Avoid hedge words: maybe, perhaps, just, kindly."
+  ],
+  "userVariants": [
+    {"when": {"toneRange": {"lower": 0.0, "upper": 0.35}}, "user": "Write a low-effort, easygoing signoff — casual and human."},
+    {"when": {"toneRange": {"lower": 0.35, "upper": 0.65}}, "user": "Write a warm, friendly everyday signoff with a light touch."},
+    {"when": {"toneRange": {"lower": 0.65, "upper": 1.00}}, "user": "Write a bright, upbeat signoff — still natural, never over the top."},
+    {"when": {}, "user": "Write one warm, friendly everyday signoff. Vary it from recent ones."}
+  ],
+  "guardWords": ["maybe", "perhaps", "just", "kindly", "ok", "okay", "please", "looking forward", "hope this", "warmly", "best", "regards", "sincerely", "cheers"],
+  "positiveExamples": ["Thanks so much!", "Talk soon.", "Appreciate you!", "Catch you later.", "Have a good one.", "Great chatting!", "Take care."],
+  "negativeExamples": ["Hope this helps!", "Looking forward to hearing from you.", "Best regards,", "Let me know if you have any questions!", "Please don't hesitate to reach out.", "Have a great day."]
+}

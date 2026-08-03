@@ -1,0 +1,53 @@
+# PR test gate: SwiftPM test suite.
+# Signoff requires macOS 26 SDK (Apple FoundationModels).
+# GitHub-hosted macOS runners may not have this SDK yet.
+
+name: Test
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  unit-tests:
+    name: Unit Tests (requires macOS 26 SDK)
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check for macOS 26 SDK
+        id: sdk_check
+        run: |
+          set -euo pipefail
+          SDK_VER="$(xcrun --sdk macosx --show-sdk-version 2>/dev/null || echo 0)"
+          echo "Detected macOS SDK: ${SDK_VER}"
+          MAJOR="${SDK_VER%%.*}"
+          if [ "${MAJOR}" -lt 26 ]; then
+            echo "sdk_available=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::macOS 26 SDK not available on this runner (has ${SDK_VER}). Tests skipped."
+            exit 0
+          fi
+          echo "sdk_available=true" >> "$GITHUB_OUTPUT"
+
+      - name: Select latest Xcode
+        run: |
+          set -euo pipefail
+          XCODE="$(ls -d /Applications/Xcode*.app 2>/dev/null | sort -V | tail -1 || true)"
+          [ -n "${XCODE}" ] || { echo "::error::No Xcode.app found"; exit 1; }
+          echo "Using ${XCODE}"
+          sudo xcode-select -s "${XCODE}/Contents/Developer"
+
+      - name: Run tests
+        if: steps.sdk_check.outputs.sdk_available == 'true'
+        run: |
+          swift test --parallel --scratch-path .build/test
+
+      - name: Upload test results
+        if: steps.sdk_check.outputs.sdk_available == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: .build/test/**/*.xml
+          if-no-files-found: ignore
