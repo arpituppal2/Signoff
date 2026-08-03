@@ -214,7 +214,11 @@ public final class AppState: ObservableObject {
     private func handleShortcutTapFailure(_ failure: CarbonEventTap.TapFailure) {
         switch failure {
         case .eventTapDenied:
-            generatedText = "Shortcuts unavailable — grant Input Monitoring in System Settings → Privacy & Security → Input Monitoring."
+            if !InputMonitoringAccess.isGranted() {
+                generatedText = "Shortcuts unavailable — grant Input Monitoring in System Settings → Privacy & Security → Input Monitoring."
+            } else {
+                generatedText = "Shortcuts unavailable — System is holding the chords. Open Settings → Shortcuts to rebind or switch to ⌥⌘."
+            }
             Task { await SystemSoundClient.shared.play(.basso) }
         case .runLoopSourceCreateFailed:
             generatedText = "Shortcut hub failed to wire (run-loop source). Restart Signoff."
