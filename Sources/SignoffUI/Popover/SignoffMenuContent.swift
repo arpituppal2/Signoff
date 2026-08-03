@@ -41,7 +41,7 @@ public struct SignoffMenuContent: View {
         ZStack {
             if showHistory {
                 HistoryPageView(onBack: { showHistory = false })
-                    .frame(width: 640)
+                    .frame(width: 580)
                     .frame(minHeight: 480)
                     .background(popoverGlass)
             } else {
@@ -64,11 +64,9 @@ public struct SignoffMenuContent: View {
 
                 bottomBar
             }
-            .frame(width: 640)
-            // Solid ink/paper page fill — the "Ink on Paper" brand metaphor. A
-            // translucent material here stacked over every card's own material
-            // made the popover read as indistinct glass-on-glass; an opaque
-            // page gives the cards a clear ground to rest on.
+            // Use slightly narrower width so the popover centers cleanly under the
+            // menu bar item; 640 was pushing left on smaller screens.
+            .frame(minWidth: 520, idealWidth: 580, maxWidth: 700)
             .background(popoverGlass)
             .task {
                 await evaluateActiveTip()
@@ -90,12 +88,11 @@ public struct SignoffMenuContent: View {
             }
 
             // Reveal splash overlay — a quick brand moment, then out of the way.
-            // Writes the signature symbol on, then zooms and fades out — centered
-            // over the popover so it reads as a deliberate reveal, not a stray element.
+            // Writes the signature symbol on, then zooms way out (scale 4x) and
+            // fades so it vanishes off-screen, then the popover reveals.
             if showSplash {
                 ZStack {
-                    Brand.Surface.page(for: scheme)
-                        .ignoresSafeArea()
+                    popoverGlass.ignoresSafeArea()
 
                     Image(systemName: "signature")
                         .font(.system(size: 64, weight: .semibold))
@@ -117,12 +114,12 @@ public struct SignoffMenuContent: View {
                     DispatchQueue.main.async { splashDrawn = true }
 
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) {
-                        withAnimation(.easeOut(duration: 0.35)) {
-                            splashScale = 1.3
+                        withAnimation(.easeOut(duration: 0.3)) {
+                            splashScale = 4.0
                             opacity = 0.0
                         }
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                            withAnimation(.easeOut(duration: 0.2)) {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                            withAnimation(.easeOut(duration: 0.15)) {
                                 showSplash = false
                                 Self.hasLoadedSplash = true
                             }
@@ -134,15 +131,16 @@ public struct SignoffMenuContent: View {
         .animation(Brand.Motion.safe(.spring(response: 0.35, dampingFraction: 0.8), reduceMotion: reduceMotion), value: showCopyToast)
     }
 
-    /// Frosted glass popover background — .ultraThinMaterial (50 % translucent)
-    /// with a whisper of the selected bucket's accent colour so the popover
-    /// reads as transparent glass without being colourless.
+    /// Frosted glass popover background — .regularMaterial (70 % opaque) with a
+    /// whisper of the selected bucket's accent colour so the popover reads as
+    /// glassy but not washed out. The menu bar extra uses .window style so this
+    /// material sits behind the entire surface.
     private var popoverGlass: some View {
         ZStack {
-            Color(nsColor: .windowBackgroundColor).opacity(0.05)
-            selectedBucketTint.opacity(0.04)
+            Color(nsColor: .windowBackgroundColor).opacity(0.35)
+            selectedBucketTint.opacity(0.06)
         }
-        .background(.ultraThinMaterial)
+        .background(.regularMaterial)
     }
 
     /// The selected bucket's accent, or the brand neutral if nothing is selected.
