@@ -113,19 +113,19 @@ public struct SignoffMenuContent: View {
                         return
                     }
 
-                    // Phase 1: drawOn (0.2s)
+                    // Phase 1: drawOn (0.5s)
                     DispatchQueue.main.async { splashDrawn = true }
 
-                    // Phase 2: zoom to 10x over 0.3s, starting after drawOn completes
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                        withAnimation(.easeOut(duration: 0.3)) {
-                            splashScale = 10.0
+                    // Phase 2: zoom to 5x over 0.1s while also drawing off
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        splashFadeOut = true
+                        withAnimation(.easeOut(duration: 0.1)) {
+                            splashScale = 5.0
                         }
                     }
 
-                    // Phase 3: fade out + drawOff over 0.15s, starting after zoom
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                        splashFadeOut = true
+                    // Phase 3: fade out 0.15s
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
                         withAnimation(.easeOut(duration: 0.15)) {
                             opacity = 0.0
                         }
@@ -533,13 +533,12 @@ private struct MenuBucketRow: View {
         )
     }
 
-    /// Inline keyboard shortcut
+    /// Inline keyboard shortcut — always display as ⌃⌘ (cmdCtrl) per design.
     private var shortcutText: String? {
         let manager = ShortcutManager.shared
         let bindings = manager.decode(AppState.shared.settings.bucketShortcutsJSON)
         if let binding = bindings.first(where: { $0.bucketId == bucket.id }) {
-            let mod = binding.modifier == "optCmd" ? "⌥⌘" : "⌃⌘"
-            return "\(mod)\(binding.digitKey)"
+            return "⌃⌘\(binding.digitKey)"
         }
         return nil
     }
