@@ -24,16 +24,13 @@ public extension View {
 }
 
 /// The signature preview card shown after a successful generation.
-/// A drafted signoff on paper — monospace signature type, a small amber
-/// underline finishing the phrase, and an honest provider badge.
+/// A drafted signoff on paper — monospace signature type.
 public struct SignatureCardView: View {
     public let text: String
-    public var providerKind: GenerationProviderKind?
     @Environment(\.colorScheme) private var scheme
 
-    public init(text: String, providerKind: GenerationProviderKind? = nil) {
+    public init(text: String) {
         self.text = text
-        self.providerKind = providerKind
     }
 
     public var body: some View {
@@ -45,18 +42,6 @@ public struct SignatureCardView: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
-
-            if let providerKind {
-                HStack(spacing: 5) {
-                    Image(systemName: providerKind.badgeSystemImage)
-                    Text(providerKind.badgeTitle)
-                }
-                .font(.caption2.weight(.medium))
-                .foregroundStyle(providerKind == .foundationModels
-                                 ? Brand.ember(for: scheme)
-                                 : Brand.Ink.secondary(for: scheme))
-                .accessibilityLabel("Provider: \(providerKind.badgeTitle)")
-            }
         }
         .padding(Brand.Layout.spacingM)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -72,10 +57,7 @@ public struct SignatureCardView: View {
     }
 
     private var accessibilitySummary: String {
-        if let providerKind {
-            return "Generated signoff via \(providerKind.badgeTitle): \(text)"
-        }
-        return "Generated signoff: \(text)"
+        "Generated signoff: \(text)"
     }
 }
 

@@ -275,7 +275,7 @@ public struct SignoffMenuContent: View {
         } else if let bucket = appState.selectedBucket, bucket.id == BucketID.custom.rawValue {
             customFooterPreview(bucket)
         } else if let txt = appState.generatedText, !appState.isGenerating {
-            SignatureCardView(text: txt, providerKind: appState.lastProviderKind)
+            SignatureCardView(text: txt)
                 .transition(
                     reduceMotion ? .opacity : .opacity.combined(with: .move(edge: .top))
                 )
@@ -509,6 +509,23 @@ private struct MenuBucketRow: View {
     private var spacingM: CGFloat { Brand.Layout.spacingM }
     private var spacingXS: CGFloat { Brand.Layout.spacingXS }
 
+    /// The bucket icon with a subtle selection animation.
+    private var bucketIcon: some View {
+        let base = Image(systemName: bucket.iconSymbol)
+            .font(.body.weight(.medium))
+            .frame(width: 20)
+            .foregroundStyle(iconColor)
+            .symbolRenderingMode(.hierarchical)
+
+        if reduceMotion {
+            return AnyView(base)
+        }
+        return AnyView(base
+            .symbolEffect(.bounce, value: isSelected)
+            .symbolEffect(.pulse, value: isSelected)
+        )
+    }
+
     /// Inline keyboard shortcut
     private var shortcutText: String? {
         let manager = ShortcutManager.shared
@@ -523,14 +540,12 @@ private struct MenuBucketRow: View {
     var body: some View {
         Button(action: {
             NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .now)
-            action()
+            withAnimation(Brand.Motion.safe(.spring(response: 0.3, dampingFraction: 0.7), reduceMotion: reduceMotion)) {
+                action()
+            }
         }) {
             HStack(spacing: spacingM) {
-                Image(systemName: bucket.iconSymbol)
-                    .font(.body.weight(.medium))
-                    .frame(width: 20)
-                    .foregroundStyle(iconColor)
-                    .symbolRenderingMode(.hierarchical)
+                bucketIcon
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(bucket.name)
@@ -582,9 +597,11 @@ private struct MenuBucketRow: View {
         }
         .buttonStyle(.plain)
         .help(shortcutHintForBucket(bucket.id))
-        .onHover { h in isHovered = h }
-        .animation(hoverAnimation, value: isHovered)
-        .animation(selectAnimation, value: isSelected)
+        .onHover { h in
+            withAnimation(Brand.Motion.safe(.easeOut(duration: 0.15), reduceMotion: reduceMotion)) {
+                isHovered = h
+            }
+        }
         .accessibilityLabel("\(bucket.name) bucket")
         .accessibilityValue(isSelected ? "Selected" : "Not selected")
         .accessibilityHint(bucket.toneLabel)
