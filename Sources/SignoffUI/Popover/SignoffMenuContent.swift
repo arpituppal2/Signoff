@@ -22,6 +22,7 @@ public struct SignoffMenuContent: View {
     // Splash screen animation state
     @State private var showSplash = !Self.hasLoadedSplash
     @State private var splashDrawn = false
+    @State private var splashFadeOut = false
     @State private var splashScale: CGFloat = 1.0
     @State private var opacity: Double = 1.0
 
@@ -98,6 +99,7 @@ public struct SignoffMenuContent: View {
                         .font(.system(size: 64, weight: .semibold))
                         .foregroundStyle(Brand.ember(for: scheme))
                         .symbolEffect(.drawOn.individually, options: .nonRepeating, isActive: splashDrawn)
+                        .symbolEffect(.drawOff.individually, options: .nonRepeating, isActive: splashFadeOut)
                         .scaleEffect(splashScale)
                         .opacity(opacity)
                 }
@@ -111,18 +113,25 @@ public struct SignoffMenuContent: View {
                         return
                     }
 
+                    // Phase 1: drawOn (0.2s)
                     DispatchQueue.main.async { splashDrawn = true }
 
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) {
+                    // Phase 2: zoom to 10x over 0.3s, starting after drawOn completes
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
                         withAnimation(.easeOut(duration: 0.3)) {
-                            splashScale = 4.0
+                            splashScale = 10.0
+                        }
+                    }
+
+                    // Phase 3: fade out + drawOff over 0.15s, starting after zoom
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        splashFadeOut = true
+                        withAnimation(.easeOut(duration: 0.15)) {
                             opacity = 0.0
                         }
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                            withAnimation(.easeOut(duration: 0.15)) {
-                                showSplash = false
-                                Self.hasLoadedSplash = true
-                            }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                            showSplash = false
+                            Self.hasLoadedSplash = true
                         }
                     }
                 }
