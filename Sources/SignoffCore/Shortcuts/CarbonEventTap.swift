@@ -84,10 +84,16 @@ public final class CarbonEventTap: @unchecked Sendable {
             callback: tapCB,
             userInfo: userInfo
         ) else {
-            // Genuine denial: CGEvent.tapCreate returned nil. Surface the
-            // system prompt so the user can grant Input Monitoring, then
-            // report the failure (SignoffDelegate presents the alert).
-            _ = InputMonitoringAccess.request()
+            // Genuine denial: CGEvent.tapCreate returned nil. Request system
+            // permission only once per version — with ad-hoc signing the CDHash
+            // changes each build, so the system dialog would otherwise re-prompt
+            // on every launch even after the user has granted access.
+            let buildVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0"
+            let promptOnceKey = "signoff.inputMonitoringSystemPrompt.\(buildVersion)"
+            if !UserDefaults.standard.bool(forKey: promptOnceKey) {
+                UserDefaults.standard.set(true, forKey: promptOnceKey)
+                _ = InputMonitoringAccess.request()
+            }
             let reason = "CGEvent.tapCreate returned nil (Input Monitoring likely not granted, or system already bound the chord)."
             Self.log.error("\(reason, privacy: .public)")
             return .failure(.eventTapDenied(reason: reason))

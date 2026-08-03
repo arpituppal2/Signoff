@@ -142,8 +142,8 @@ final class SignoffDelegate: NSObject, NSApplicationDelegate {
         // Input Monitoring alert is driven by the REAL tap install result, not
         // `CGPreflightListenEventAccess()` (which returns false on some Macs even
         // when Input Monitoring is already granted). `.eventTapDenied` is only
-        // posted when `CGEvent.tapCreate` actually returns nil. Re-presents on
-        // every launch while the tap can't be installed.
+        // posted when `CGEvent.tapCreate` actually returns nil. Only shown once
+        // per version — repeated launch nags don't fix chord conflicts.
         NotificationCenter.default.addObserver(self, selector: #selector(handleShortcutTapFailure(_:)),
                                                name: .shortcutTapFailed, object: nil)
         // ⌃⌘` opens the menu bar popover from any app.
@@ -158,6 +158,18 @@ final class SignoffDelegate: NSObject, NSApplicationDelegate {
     @objc private func handleShortcutTapFailure(_ notification: Notification) {
         guard let failure = notification.object as? CarbonEventTap.TapFailure else { return }
         if case .eventTapDenied = failure {
+            // If Input Monitoring is already granted by the user, the tap failure
+            // is a system-level chord conflict (e.g. Mission Control owns ⌃⌘N),
+            // not a permission issue. The Shortcuts Settings pane already surfaces
+            // the conflict banner — no need to re-nag.
+            guard !InputMonitoringAccess.isGranted() else { return }
+
+            // Once-per-version gate: repeated launches don't re-show the alert.
+            let buildVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0"
+            let onceKey = "signoff.inputMonitoringAlertShown.\(buildVersion)"
+            guard !UserDefaults.standard.bool(forKey: onceKey) else { return }
+            UserDefaults.standard.set(true, forKey: onceKey)
+
             Task { @MainActor in presentInputMonitoringAlert() }
         }
     }
