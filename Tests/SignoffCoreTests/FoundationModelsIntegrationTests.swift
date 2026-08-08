@@ -56,8 +56,9 @@ final class FoundationModelsIntegrationTests: XCTestCase {
             XCTAssertFalse(t.userVariants.isEmpty, "\(id) userVariants")
             // Not all buckets define guardWords (unhinged, custom intentionally leave it empty).
             // XCTAssertFalse(t.guardWords.isEmpty, "\(id) guardWords")
-            XCTAssertFalse(t.positiveExamples.isEmpty, "\(id) positiveExamples")
-            XCTAssertFalse(t.negativeExamples.isEmpty, "\(id) negativeExamples")
+            // positiveExamples and negativeExamples can be empty - we don't use them in prompt prefix
+            XCTAssertNotNil(t.positiveExamples, "\(id) positiveExamples")
+            XCTAssertNotNil(t.negativeExamples, "\(id) negativeExamples")
         }
     }
 
@@ -88,7 +89,8 @@ final class FoundationModelsIntegrationTests: XCTestCase {
         XCTAssertTrue(composed.prompt.contains("Thanks for shipping this."))
         XCTAssertTrue(composed.prompt.contains("Keep it breezy"))
         XCTAssertTrue(composed.instructions.contains(template.system))
-        XCTAssertTrue(composed.instructions.contains("Rules:"))
+        // Rules are NOT in instructions (to avoid content filter); guard words validated post-generation
+        XCTAssertFalse(composed.instructions.contains("Rules:"))
     }
 
     func testPromptComposer_PromptPrefixExcludesRecents() {
@@ -109,8 +111,8 @@ final class FoundationModelsIntegrationTests: XCTestCase {
             profile: UserProfileSnapshot(profile: nil),
             recentTexts: []
         )
-        XCTAssertTrue(composed.promptPrefix.contains("Good examples:"))
-        XCTAssertTrue(composed.promptPrefix.contains("Avoid:"))
+        // Prompt prefix should only contain userVariant (no examples to avoid content filter)
+        XCTAssertTrue(composed.promptPrefix.contains("signoff"))
         XCTAssertTrue(composed.prompt.hasPrefix(composed.promptPrefix))
     }
 

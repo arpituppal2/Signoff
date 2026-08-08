@@ -4,7 +4,7 @@ import SwiftUI
 import Combine
 import Carbon
 import AppKit
-import TipKit
+import os.log
 
 @MainActor
 public final class AppState: ObservableObject {
@@ -26,12 +26,12 @@ public final class AppState: ObservableObject {
         AXIsProcessTrusted()
     }
 
-    /// SwiftUI preview factory. Builds a transient in-memory `AppState` so
-    /// `#Preview { ... }` views can render without booting the real store.
-    @MainActor public static let preview: AppState = {
-        let s = AppState(allowPreviewBootstrap: ())
-        return s
-    }()
+    /// Has the user ever opened the menu bar?
+    @Published public var hasOpenedMenuBar: Bool = false
+    /// Did the user attempt Generate with no bucket selected?
+    @Published public var generateAttemptedNoBucket: Bool = false
+    /// Prevents re-posting the first-open notification.
+    private var hasPostedFirstOpen: Bool = false
 
     @Published public var settings: AppSettings = AppSettings()
     @Published public var profile: UserProfile = UserProfile.makeEmpty()
@@ -56,23 +56,6 @@ public final class AppState: ObservableObject {
     /// Cleared when the user dismisses the popover recovery card.
     @Published public var storeRecovery: StoreRecovery?
 
-    // MARK: - TipKit state
-
-    /// Has the user ever opened the menu bar?
-    @Published public var hasOpenedMenuBar: Bool = false
-    /// Did the user attempt Generate with no bucket selected?
-    @Published public var generateAttemptedNoBucket: Bool = false
-    /// Has the "Generate needs bucket" tip been shown?
-    @Published public var generateNeedsBucketTipShown: Bool = false
-    /// Has at least one generation succeeded?
-    @Published public var hasGeneratedAtLeastOnce: Bool = false
-    /// Total successful generations (for TeachVoiceTip threshold)
-    @Published public var generationCount: Int = 0
-    /// Did user attempt auto-paste (menu bar Generate with shouldAutoPaste)?
-    @Published public var autoPasteAttempted: Bool = false
-    /// Has user triggered a global shortcut?
-    @Published public var hasAttemptedShortcut: Bool = false
-
     public var selectedBucket: Bucket? {
         buckets.first { $0.id == selectedBucketId }
     }
@@ -82,18 +65,31 @@ public final class AppState: ObservableObject {
     /// idempotent for AppIntents and app launch.
     private var didInitialize = false
 
-    /// Internal designated initializer. The public path is `.shared`; SwiftUI
-    /// previews use the `preview` static factory which calls this directly with
-    /// a sentinel argument so we don't double-init the real store.
-    init(allowPreviewBootstrap _: Void) {
-        // No-op: SwiftUI previews don't need the persistence/shortcut pipeline.
+    /// The CTA string shown in `generatedText` when Accessibility is denied.
+    /// This is a single source of truth for the message so tests and UI stay in sync.
+    public static let accessibilityDeniedCTA = "⌘V failed — grant Accessibility in System Settings → Privacy & Security, then retry."
+
+    /// Preview-only instance for SwiftUI previews and unit tests.
+    /// Uses the preview initializer that skips the real pipeline.
+    public static let preview: AppState = AppState()
+
+    /// Private designated initializer. The public path is `.shared`; SwiftUI
+    /// previews use the `preview` static property which calls this with a
+    /// sentinel argument so we don't double-init the real store.
+    private init(_: Void = ()) {
     }
 
-    private init() {}
-    
     /// Fire haptic feedback for clipboard actions (HIG: feedback § — use sound and haptics to enhance feedback).
     private func fireClipboardHaptic() {
         NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .now)
+    }
+
+    /// Retry shortcut registration if the Carbon tap isn't functional (e.g. after
+    /// Input Monitoring permission is granted). Called when app becomes active.
+    @MainActor
+    private func retryShortcutRegistrationIfNeeded() {
+        guard !shortcuts.isTapFunctional, !shortcuts.isPaused else { return }
+        Task { await registerShortcutBindings() }
     }
 
     /// TASK-13 (PF-bundle): cold-start binding for AppIntents and other
@@ -115,9 +111,49 @@ public final class AppState: ObservableObject {
 
         try persistence.initializeDefaultsIfNeeded()
         settings = try persistence.fetchSettings()
+        // Migration: ensure shortcut bindings use ctrlOpt (⌃⌥) not optCmd (⌥⌘)
+        let currentBindings = shortcuts.decode(settings.bucketShortcutsJSON)
+        let needsMigration = currentBindings.contains { $0.modifier == "optCmd" }
+        if needsMigration {
+            let newBindings = shortcuts.ctrlOptDefaults()
+            settings.bucketShortcutsJSON = shortcuts.encode(newBindings)
+            settings.updatedAt = Date()
+            try? persistence.context.save()
+        }
         profile = try persistence.fetchProfile() ?? UserProfile.makeEmpty()
         buckets = try persistence.fetchEnabledBuckets()
         if buckets.isEmpty { buckets = Bucket.defaultBuckets() }
+
+        // Normalize bucket configs to prevent stale SwiftData overrides:
+        // - standard (Normal): never has unhingedLevel
+        // - professional: never has unhingedLevel (uses toneValue instead)
+        // - unhinged (Cynical): unhingedLevel = .cynical
+        for bucket in buckets {
+            var needsSave = false
+            switch bucket.id {
+            case BucketID.standard.rawValue:
+                if bucket.unhingedLevel != nil {
+                    bucket.unhingedLevel = nil
+                    needsSave = true
+                }
+            case BucketID.professional.rawValue:
+                if bucket.unhingedLevel != nil {
+                    bucket.unhingedLevel = nil
+                    needsSave = true
+                }
+            case BucketID.unhinged.rawValue:
+                if bucket.unhingedLevel != .cynical {
+                    bucket.unhingedLevel = .cynical
+                    needsSave = true
+                }
+            default:
+                break
+            }
+            if needsSave {
+                bucket.updatedAt = Date()
+            }
+        }
+
         if !buckets.contains(where: { $0.id == selectedBucketId }) {
             selectedBucketId = buckets.first?.id ?? BucketID.standard.rawValue
         }
@@ -164,28 +200,49 @@ public final class AppState: ObservableObject {
             }
             .store(in: &cancellables)
         await registerShortcutBindings()
-        
+
+        // Proactively prompt for Input Monitoring if not granted.
+        // This ensures the system dialog appears on first launch without waiting
+        // for the Carbon tap to fail (which happens asynchronously).
+        if !InputMonitoringAccess.isGranted() {
+            Task { @MainActor in
+                InputMonitoringAccess.request()
+            }
+        }
+
         // Warm the per-bucket phrase cache from Apple Foundation Models in the
         // background. The cache starts empty and is filled *only* by the
         // on-device model — there is no static phrasebook seed — so the model
         // actually runs and its cost is real.
-        BucketCache.shared.warmup(buckets: buckets,
-                                  profile: UserProfileSnapshot(profile: profile),
-                                  ageGroup: settings.generationAgeGroup)
+        // DISABLED: BucketCache.shared.clearAll()
+        // BucketCache.shared.warmup(buckets: buckets,
+        //                        profile: UserProfileSnapshot(profile: profile),
+        //                        ageGroup: settings.generationAgeGroup)
 
-        await generation.warmup()
+        // DISABLED: warmup/prewarm seems to corrupt content filter state
+        // await generation.warmup()
 
-        // Initialize VoiceProfile after persistence is ready
-        try? persistence.initializeVoiceProfile()
-        VoiceProfile.initialize()
+        // Observe first menu bar open to trigger splash
+        $hasOpenedMenuBar
+            .filter { $0 }
+            .first()
+            .sink { [weak self] _ in
+                guard let self, !self.hasPostedFirstOpen else { return }
+                self.hasPostedFirstOpen = true
+                NotificationCenter.default.post(name: .signoffMenuBarFirstOpen, object: nil)
+            }
+            .store(in: &cancellables)
 
-        // Start SilentLearningEngine if Accessibility is granted
-        if accessibilityGranted {
-            await SilentLearningEngine.shared.start()
-        }
-
-        // Sync TipKit parameters after initialization
-        syncTipParameters(appState: self)
+        // Retry shortcut registration when app becomes active (e.g. after user
+        // grants Input Monitoring permission in System Settings).
+        NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                MainActor.assumeIsolated {
+                    self?.retryShortcutRegistrationIfNeeded()
+                }
+            }
+            .store(in: &cancellables)
 
         didInitialize = true
     }
@@ -212,16 +269,19 @@ public final class AppState: ObservableObject {
 
     @MainActor
     private func handleShortcutTapFailure(_ failure: CarbonEventTap.TapFailure) {
+        // Tap-install failures are surfaced PASSIVELY: `inputMonitoringGranted`
+        // (drives the TipKit indicator) and `boundShortcutConflicts` (drives the
+        // Settings → Shortcuts conflict banner). We deliberately do NOT hijack
+        // `generatedText` here — `generatedText` is for generation results, and
+        // clobbering it with a permission nag on every launch (the tap is
+        // (re)installed at launch and whenever bindings change) is the wrong
+        // affordance. With ad-hoc signing the bundle signature changes each build,
+        // so `CGEvent.tapCreate` can return nil even when System Settings shows
+        // Input Monitoring toggled on; a launch-time nag cannot fix that and only
+        // annoys. The Shortcuts Settings pane is where the user resolves it.
         switch failure {
-        case .eventTapDenied:
-            generatedText = "Shortcuts unavailable — grant Input Monitoring in System Settings → Privacy & Security → Input Monitoring."
-            Task { await SystemSoundClient.shared.play(.basso) }
-        case .runLoopSourceCreateFailed:
-            generatedText = "Shortcut hub failed to wire (run-loop source). Restart Signoff."
-            Task { await SystemSoundClient.shared.play(.basso) }
-        case .tapEnableFailed:
-            generatedText = "System is holding your chords — open Settings → Shortcuts to rebind or switch to ⌥⌘."
-            Task { await SystemSoundClient.shared.play(.basso) }
+        case .eventTapDenied, .runLoopSourceCreateFailed, .tapEnableFailed:
+            break
         }
     }
 
@@ -245,18 +305,16 @@ public final class AppState: ObservableObject {
         await registerShortcutBindings()
     }
 
-    /// One-tap Mission Control escape hatch — switch every bucket to ⌥⌘N.
+    /// One-tap Mission Control escape hatch — switch every bucket to ⌃⌥N.
+    @MainActor
+    public func switchAllShortcutsToCtrlOpt() async {
+        await applyShortcutBindings(shortcuts.ctrlOptDefaults())
+    }
+
+    /// Switch every bucket shortcut to ⌥⌘N (Option-Command digits).
     @MainActor
     public func switchAllShortcutsToOptCmd() async {
         await applyShortcutBindings(shortcuts.optCmdDefaults())
-    }
-
-    /// Start the silent learning engine when Accessibility is granted.
-    /// Called from onboarding when user grants Accessibility permission.
-    @MainActor
-    public func startLearningEngineIfNeeded() async {
-        guard accessibilityGranted else { return }
-        await SilentLearningEngine.shared.start()
     }
 
     /// Public so `SignoffMenuContent` (SignoffUI target) can wire its Copy-last
@@ -322,12 +380,69 @@ public final class AppState: ObservableObject {
         }
         let bindings = shortcuts.decode(settings.bucketShortcutsJSON)
         _ = await shortcuts.probe(bindings: bindings)
-        await shortcuts.register(bindings: bindings) { [weak self] bucketId in
+        let specialBindings = decodeSpecialBindings()
+        await shortcuts.register(
+            bindings: bindings,
+            specialBindings: specialBindings
+        ) { [weak self] bucketId in
             Task { @MainActor in
                 guard let self, !self.shortcuts.isPaused else { return }
                 self.selectedBucketId = bucketId
-                await self.generateNow()
+                // Fire the at-caret signature animation *before* generation so
+                // the user sees feedback exactly where they're typing; it fades
+                // out by the time the paste lands. Resolved & shown by the app
+                // delegate (SignoffUI overlay + SignoffCore caret locator).
+                NotificationCenter.default.post(name: .signoffShortcutGenerateStarted, object: nil)
+                // Shortcut auto-paste respects the user's settings toggle.
+                await self.generateNow(shouldAutoPaste: self.settings.shortcutAutoPaste)
             }
+        } runSpecialAction: { [weak self] action in
+            Task { @MainActor in
+                guard let self, !self.shortcuts.isPaused else { return }
+                switch action {
+                case .pasteAfterSignoff:
+                    await self.pasteAfterSignoffOnly()
+                }
+            }
+        }
+    }
+
+    /// Decode the persisted JSON of special-action bindings; fall back to the
+    /// default ⌃⌥F chord so the feature works out of the box.
+    private func decodeSpecialBindings() -> [ShortcutManager.SpecialActionBinding] {
+        let raw = settings.afterSignoffShortcutJSON
+        if !raw.isEmpty,
+           let data = raw.data(using: .utf8),
+           let decoded = try? JSONDecoder().decode([ShortcutManager.SpecialActionBinding].self, from: data),
+           !decoded.isEmpty {
+            return decoded
+        }
+        return [ShortcutManager.SpecialActionBinding(action: .pasteAfterSignoff, digitKey: "f", modifier: "ctrlOpt")]
+    }
+
+    /// Paste just the "After Signoff" footer content — no generated signoff.
+    /// Uses rich text if present, else plain text from the configured footer.
+    public func pasteAfterSignoffOnly() async {
+        let attr = settings.afterSignoffAttributedString
+        let trimmed = attr.string.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            NSSound.beep()
+            return
+        }
+        NotificationCenter.default.post(name: .signoffShortcutGenerateStarted, object: nil)
+        do {
+            if attr.length > 0 && attr.attribute(.attachment, at: 0, effectiveRange: nil) != nil {
+                try await paste.paste(attr)
+            } else {
+                try await paste.paste(trimmed)
+            }
+            await SystemSoundClient.shared.play(.tink)
+        } catch PasteError.accessibilityDenied {
+            generatedText = Self.accessibilityDeniedCTA
+        } catch PasteError.pasteboardWriteFailed {
+            generatedText = "Clipboard write failed — pasteboard may be locked."
+        } catch {
+            generatedText = "Paste failed (unexpected)."
         }
     }
 
@@ -351,18 +466,6 @@ public final class AppState: ObservableObject {
         lastStatus = nil
         generation.clearStatus()
 
-        // Track auto-paste attempt for AccessibilityPermissionTip
-        if shouldAutoPaste {
-            autoPasteAttempted = true
-        }
-
-        // Custom bucket: no model involved — the user's rich-text footer *is*
-        // the signoff. Copy as RTF (+ image), optionally paste at the cursor.
-        if bucket.id == BucketID.custom.rawValue {
-            await generateCustomFooter(bucket: bucket, shouldAutoPaste: shouldAutoPaste)
-            return
-        }
-
         let outcome = await generation.generate(
             bucketId: bucket.id,
             profile: profile,
@@ -377,14 +480,10 @@ public final class AppState: ObservableObject {
         )
         switch outcome {
         case .success(let o):
-            generatedText = o.text
+            generatedText = applyAfterSignoff(to: o.text)
             lastProviderKind = o.providerKind
             lastLatencyMs = o.latencyMs
             lastStatus = nil
-
-            // Track successful generation for tips
-            hasGeneratedAtLeastOnce = true
-            generationCount += 1
 
         case .providerFailed:
             generatedText = nil
@@ -414,56 +513,25 @@ public final class AppState: ObservableObject {
         }
     }
 
-    /// CTA copy when ⌘V synthesis fails because Accessibility is denied.
-    public static let accessibilityDeniedCTA =
-        "⌘V didn't land — grant Accessibility in System Settings → Privacy & Security → Accessibility and retry."
-
-    /// Custom bucket: copy the user-authored rich-text footer (RTF + image) to
-    /// the clipboard, optionally paste it at the cursor. No model is called.
-    private func generateCustomFooter(bucket: Bucket, shouldAutoPaste: Bool) async {
-        let footerData = bucket.footerRTFData
-        guard let footer = RichTextFooter.attributed(from: footerData),
-              !footer.string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            generatedText = "Write a footer under Settings → Buckets → Custom first, then generate."
-            lastProviderKind = nil
-            lastLatencyMs = nil
-            lastStatus = nil
-            return
-        }
-
-        let plain = footer.string
-        generatedText = plain
-        lastProviderKind = nil
-        lastLatencyMs = 0
-        lastStatus = nil
-        hasGeneratedAtLeastOnce = true
-        generationCount += 1
-
-        // Record in history so Recent / Copy Last keep working like other buckets.
-        await PersistenceController.shared.recordGeneration(
-            bucketId: bucket.id, text: plain, providerRaw: "custom-footer", latencyMs: 0)
-
-        guard RichTextFooter.writeRTF(footer, to: NSPasteboard.general) else {
-            generatedText = "Clipboard write failed — pasteboard may be locked."
-            return
-        }
-
-        if shouldAutoPaste {
-            _ = await commitGeneratedPaste(attributed: footer)
-        } else {
-            fireClipboardHaptic()
-        }
-    }
-
-    /// Attempts paste and maps `PasteError onto `generatedText` + a single audio cue.
+    /// Attempts paste and maps `PasteError` onto `generatedText` + a single audio cue.
+    /// When rapid-replace is enabled and the trigger lands within the cooldown
+    /// window after the last paste, the previously-pasted text is selected and
+    /// pasted over instead of appending at the cursor.
     @discardableResult
     func commitGeneratedPaste(_ text: String) async -> Bool {
         var pasteSucceeded = false
         do {
-            try await paste.paste(text)
+            if shouldRapidReplace() {
+                try await paste.replacePreviousAndPaste(text)
+            } else {
+                try await paste.paste(text)
+            }
             pasteSucceeded = true
         } catch PasteError.accessibilityDenied {
+            // Keep generatedText visible so user can manually copy.
+            // The PasteAutomation layer will trigger the system Accessibility prompt.
             generatedText = Self.accessibilityDeniedCTA
+            pasteSucceeded = false
         } catch PasteError.pasteboardWriteFailed {
             generatedText = "Clipboard write failed — pasteboard may be locked."
         } catch {
@@ -477,27 +545,34 @@ public final class AppState: ObservableObject {
         return pasteSucceeded
     }
 
-    /// Attributed variant used by the Custom bucket — the rich footer is already
-    /// on the pasteboard, so the paste just synthesizes ⌘V against it.
-    @discardableResult
-    func commitGeneratedPaste(attributed footer: NSAttributedString) async -> Bool {
-        var pasteSucceeded = false
-        do {
-            try await paste.paste(footer)
-            pasteSucceeded = true
-        } catch PasteError.accessibilityDenied {
-            generatedText = Self.accessibilityDeniedCTA
-        } catch PasteError.pasteboardWriteFailed {
-            generatedText = "Clipboard write failed — pasteboard may be locked."
-        } catch {
-            generatedText = "Paste failed (unexpected)."
+    /// Append the user's configured "after signoff" text below the generated
+    /// signoff in the format: [signoff],\n[afterText]. If empty, returns the
+    /// signoff unchanged. Supports rich text (multi-line, images).
+    private func applyAfterSignoff(to text: String) -> String {
+        let attr = settings.afterSignoffAttributedString
+        let trimmed = attr.string.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return text }
+        return "\(text)\n\(trimmed)"
+    }
+
+    /// True when rapid-replace is enabled AND this trigger falls inside the
+    /// cooldown window after the last paste. The prior paste is forgotten once
+    /// the window expires so the next paste inserts normally.
+    private func shouldRapidReplace() -> Bool {
+        guard settings.rapidReplaceEnabled,
+              let lastAt = paste.lastPastedAt,
+              let lastText = paste.lastPastedText, !lastText.isEmpty else {
+            return false
         }
-        if pasteSucceeded {
-            await SystemSoundClient.shared.play(.tink)
+        let elapsed = Date().timeIntervalSince(lastAt)
+        let cooldown = Double(settings.rapidReplaceCooldownSeconds)
+        if elapsed <= cooldown {
+            return true
         } else {
-            await SystemSoundClient.shared.play(.basso)
+            // Window expired — forget so a later trigger pastes fresh.
+            paste.forgetLastPaste()
+            return false
         }
-        return pasteSucceeded
     }
 }
 
@@ -520,4 +595,17 @@ public extension Notification.Name {
         Notification.Name("signoff.shortcutTapFailed")
     static let signoffMenuBarAppUsed =
         Notification.Name("signoff.menuBarAppUsed")
+    static let signoffMenuBarFirstOpen =
+        Notification.Name("signoff.menuBarFirstOpen")
+    /// Fired to ask the app to present/re-open the onboarding window
+    /// (Settings → Advanced → Re-run onboarding). The delegate owns the
+    /// `openWindow(id:)` call because SwiftUI scene-opening has to happen
+    /// from the App, not from a SwiftData/Core model file.
+    static let signoffOnboardingRequested =
+        Notification.Name("signoff.onboardingRequested")
+    /// Fired the instant a global generate shortcut fires (before generation),
+    /// so the UI can show the at-caret signature animation where the user is
+    /// typing. The paste lands later, once generation + ⌘V complete.
+    static let signoffShortcutGenerateStarted =
+        Notification.Name("signoff.shortcutGenerateStarted")
 }

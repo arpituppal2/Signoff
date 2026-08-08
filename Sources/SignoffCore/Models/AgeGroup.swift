@@ -41,13 +41,17 @@ public enum AgeGroup: String, Codable, Sendable, CaseIterable, Equatable {
         switch self {
         case .genZ:
             return """
-            Write the way someone in their early-to-mid twenties texts a coworker they \
-            actually respect: lowercase-leaning, dry, low on effort, zero corporate \
-            warmth. No exclamation marks unless the line genuinely earns one. Never use \
-            the closers \"Warmly\", \"Best\", \"Regards\", \"Cheers\", \"Talk soon\", \
-            \"Hope this helps\", or \"Looking forward to hearing from you\". Prefer blunt, \
-            confident, one-line endings like \"noted, thank you.\", \"sounds good.\", \
-            \"will do.\", or a plain \"thanks.\" Never sound perky or eager.
+            Write creative, witty email signoffs with real personality — like a clever \
+            friend, NOT a chatbot. Mix wordplay, pop-culture nods, deadpan irony, or \
+            absurdist humor. Every signoff should be a fresh, unexpected one-liner that \
+            makes the reader smile or laugh. Lowercase is fine, punctuation is optional, \
+            and format varies freely — some end with commas, some with periods, some \
+            with nothing at all. Never use corporate garbage like \"Warmly\", \"Best \
+            regards\", \"Cheers\", \"Talk soon\", \"Hope this helps\", or \"Looking \
+            forward to hearing from you\". Never be boring, never repeat yourself, \
+            never just say \"thanks.\" or \"will do.\" — those are NOT creative signoffs. \
+            Every output should feel hand-crafted, like the user spent 30 seconds thinking \
+            of something actually funny or clever to leave as a parting shot.
             """
         case .millennial:
             return """

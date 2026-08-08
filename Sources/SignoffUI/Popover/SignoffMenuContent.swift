@@ -1,19 +1,28 @@
 import SwiftUI
 import SignoffCore
-import TipKit
 import AppKit
 
-/// Menu content for MenuBarExtra — replaces NSPopover per HIG "Display a menu — not a popover".
+/// Menu content for MenuBarExtra — the primary, always-available surface.
 ///
-/// Layout: a wide, balanced two-column surface (Voices → Compose) on Liquid Glass
-/// materials, with a slim bottom bar carrying status + Settings/Quit. Density is
-/// deliberately low — one section per concern, generous spacing, and a single
-/// contextual TipKit slot instead of a stack.
+/// Layout philosophy: a calm, two-column surface that reads like a small Apple
+/// app, not a density demo. Left = Voices (the chooser), Right = Compose (the
+/// action + result). A slim status footer beneath carries privacy, provider,
+/// and the History/Settings/Quit affordances — so the two main columns are
+/// reserved for *content* and never have to fight chrome for attention.
+///
+/// Hierarchy: Generate & Paste is the single primary action (people open the
+/// popover to *land* a signoff, not to preview). Generate is secondary (same
+/// output, copy-only — no paste). Tertiary: recopy, history, settings, quit.
+///
+/// Keyboard-first: the popover inherits the app's command menu; bucket selection
+/// and Generate stay one-tap, and the global ⌃⌥N chords work from anywhere.
 @MainActor
 public struct SignoffMenuContent: View {
     @EnvironmentObject private var appState: AppState
     @Environment(\.colorScheme) private var scheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.openWindow) private var openWindow
+    @Environment(\.openSettings) private var openSettings
 
     // Toast state for copy confirmation
     @State private var showCopyToast = false
@@ -21,13 +30,12 @@ public struct SignoffMenuContent: View {
 
     // Splash screen animation state
     @State private var showSplash = !Self.hasLoadedSplash
-    @State private var animateSplash = false
-    @State private var opacity: Double = 1.0
-
-    // Single contextual tip — the most relevant TipKit tip, shown one at a time.
-    @State private var activeTip: (any Tip)?
+    @State private var splashPhase: SplashPhase = .idle
 
     @State private var dismissedFMCTA = false
+
+    /// Toggles the history page; set via the clock icon button in the footer.
+    @State private var showHistory = false
 
     public static var hasLoadedSplash = false
 
@@ -35,52 +43,16 @@ public struct SignoffMenuContent: View {
 
     public var body: some View {
         ZStack {
-            VStack(alignment: .leading, spacing: 0) {
-                header
-
-                Divider()
-                    .overlay(Brand.Surface.divider(for: scheme))
-                    .padding(.horizontal, Brand.Layout.spacingM)
-
-                // Balanced two-column layout: Voices on the left, Compose on the right.
-                HStack(alignment: .top, spacing: 0) {
-                    voicesColumn
-                    Divider()
-                        .overlay(Brand.Surface.divider(for: scheme))
-                    composeColumn
-                }
-
-                if activeTip != nil {
-                    tipStrip
-                }
-
-                if !appState.recentGenerations.isEmpty && !appState.isGenerating {
-                    recentHistorySection
-                        .padding(.horizontal, Brand.Layout.spacingM)
-                        .padding(.vertical, Brand.Layout.spacingXS)
-                        .transition(
-                            reduceMotion ? .opacity : .opacity.combined(with: .move(edge: .top))
-                        )
-                }
-
-                Divider()
-                    .overlay(Brand.Surface.divider(for: scheme))
-                    .padding(.horizontal, Brand.Layout.spacingM)
-
-                bottomBar
-            }
-            .frame(width: 640)
-            .background(.ultraThinMaterial)
-            .modifier(LiquidGlassBackground())
-            .task {
-                await evaluateActiveTip()
-                FoundationModelsAvailability.shared.refresh()
-                appState.hasOpenedMenuBar = true
-                syncTipParameters(appState: appState)
-                NotificationCenter.default.post(name: .signoffMenuBarAppUsed, object: nil)
+            if showHistory {
+                HistoryPageView(onBack: { showHistory = false })
+                    .frame(width: 580)
+                    .frame(minHeight: 480)
+                    .background(popoverGlass)
+            } else {
+                mainSurface
             }
 
-            // Copy confirmation toast overlay
+            // Copy confirmation toast overlay — sits above the footer capsule.
             if showCopyToast {
                 CopyToastView(message: toastMessage)
                     .transition(
@@ -89,103 +61,106 @@ public struct SignoffMenuContent: View {
                     .zIndex(1)
             }
 
-            // Reveal splash overlay — a quick brand moment, then out of the way.
             if showSplash {
-                ZStack {
-                    Brand.Surface.page(for: scheme)
-                        .ignoresSafeArea()
-
-                    Image(systemName: "signature")
-                        .font(.system(size: 64, weight: .semibold))
-                        .foregroundStyle(Brand.ember(for: scheme))
-                        .symbolEffect(.drawOn.individually, isActive: animateSplash)
-                        .opacity(opacity)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .zIndex(2)
-                .transition(.opacity)
-                .onAppear {
-                    guard !reduceMotion else {
-                        showSplash = false
-                        Self.hasLoadedSplash = true
-                        return
-                    }
-                    animateSplash = true
-
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) {
-                        withAnimation(.easeOut(duration: 0.35)) {
-                            opacity = 0.0
-                        }
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                            withAnimation(.easeOut(duration: 0.2)) {
-                                showSplash = false
-                                Self.hasLoadedSplash = true
-                            }
-                        }
-                    }
-                }
+                SplashOverlay(
+                    showSplash: $showSplash,
+                    splashPhase: $splashPhase
+                )
             }
         }
         .animation(Brand.Motion.safe(.spring(response: 0.35, dampingFraction: 0.8), reduceMotion: reduceMotion), value: showCopyToast)
     }
 
-    // MARK: - Header
-
-    private var header: some View {
-        HStack(spacing: Brand.Layout.spacingM) {
-            SignatureMark(isGenerating: appState.isGenerating)
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Signoff")
-                    .font(Brand.Typography.headline)
-                    .foregroundStyle(Brand.Ink.primary(for: scheme))
-                Text("On-device email signoffs")
-                    .font(Brand.Typography.caption1)
-                    .foregroundStyle(Brand.Ink.tertiary(for: scheme))
-            }
-            Spacer(minLength: 4)
-            PrivacyBadge()
-                .tint(Brand.ember(for: scheme))
+    /// The two-column main surface. History/Settings/Quit live tucked under
+    /// the voices in the left column (they're voice-adjacent utilities), so
+    /// there's no full-width chrome bar fighting the content for attention.
+    private var mainSurface: some View {
+        HStack(alignment: .top, spacing: 0) {
+            voicesColumn
+            Divider()
+                .overlay(Brand.Surface.divider(for: scheme))
+            composeColumn
         }
-        .padding(.horizontal, Brand.Layout.spacingL)
-        .padding(.vertical, Brand.Layout.spacingM)
+        .frame(minWidth: 460, idealWidth: 500, maxWidth: 620, minHeight: 294, idealHeight: 322)
+        .background(popoverGlass)
+        .task {
+            FoundationModelsAvailability.shared.refresh()
+            appState.hasOpenedMenuBar = true
+            NotificationCenter.default.post(name: .signoffMenuBarAppUsed, object: nil)
+        }
+        // Onboarding trigger: observe the showOnboarding flag (set by
+        // AppState.initialize) and the "Re-run onboarding" button in Settings.
+        .onChange(of: appState.showOnboarding) { _, shouldShow in
+            if shouldShow { openWindow(id: "signoff.onboarding") }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .signoffOnboardingRequested)) { _ in
+            if appState.showOnboarding { openWindow(id: "signoff.onboarding") }
+        }
+    }
+
+    // Frosted glass popover background — .regularMaterial (70 % opaque) with a
+    /// whisper of the selected bucket's accent colour so the popover reads as
+    /// glassy but not washed out. The menu bar extra uses .window style so this
+    /// material sits behind the entire surface.
+    private var popoverGlass: some View {
+        ZStack {
+            Color(nsColor: .windowBackgroundColor).opacity(0.35)
+            selectedBucketTint.opacity(0.06)
+        }
+        .background(.regularMaterial)
+    }
+
+    /// The selected bucket's accent, or the brand neutral if nothing is selected.
+    private var selectedBucketTint: Color {
+        guard let bucket = appState.selectedBucket else { return Brand.ember(for: scheme) }
+        return Brand.accent(for: bucket.id, scheme: scheme)
     }
 
     // MARK: - Voices (left column)
 
     private var voicesColumn: some View {
         VStack(alignment: .leading, spacing: Brand.Layout.spacingS) {
-            sectionLabel("Voices", systemImage: "square.stack.3d.up.fill")
+            sectionLabel("Voices", systemImage: "person.2.crop.square.stack.fill")
 
             if appState.buckets.isEmpty {
-                VStack(alignment: .leading, spacing: Brand.Layout.spacingXS) {
-                    Text("No voices yet.")
-                        .font(Brand.Typography.callout.weight(.medium))
-                        .foregroundStyle(Brand.Ink.primary(for: scheme))
-                    Text("Open Settings to seed the defaults.")
-                        .font(Brand.Typography.caption1)
-                        .foregroundStyle(Brand.Ink.tertiary(for: scheme))
-                }
-                .padding(Brand.Layout.spacingM)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(
-                    RoundedRectangle(cornerRadius: Brand.Layout.radiusM, style: .continuous)
-                        .fill(Brand.Surface.card(for: scheme).opacity(scheme.isDark ? 0.5 : 0.6))
-                )
+                emptyVoicesState
             } else {
                 VStack(spacing: 6) {
                     ForEach(appState.buckets, id: \.id) { bucket in
                         MenuBucketRow(
                             bucket: bucket,
                             isSelected: bucket.id == appState.selectedBucketId,
+                            showShortcutHint: appState.settings.showShortcutHints,
                             action: { appState.selectedBucketId = bucket.id }
                         )
                     }
                 }
             }
+
+            Spacer(minLength: Brand.Layout.spacingM)
+
+            footerRow
         }
         .frame(width: 224, alignment: .leading)
         .padding(.horizontal, Brand.Layout.spacingM)
         .padding(.vertical, Brand.Layout.spacingM)
+    }
+
+    private var emptyVoicesState: some View {
+        VStack(alignment: .leading, spacing: Brand.Layout.spacingXS) {
+            Text("No voices yet.")
+                .font(Brand.Typography.callout.weight(.medium))
+                .foregroundStyle(Brand.Ink.primary(for: scheme))
+            Text("Open Settings to seed the defaults.")
+                .font(Brand.Typography.caption1)
+                .foregroundStyle(Brand.Ink.tertiary(for: scheme))
+        }
+        .padding(Brand.Layout.spacingM)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: Brand.Layout.radiusM, style: .continuous)
+                .fill(Brand.Surface.card(for: scheme).opacity(scheme.isDark ? 0.5 : 0.6))
+        )
     }
 
     // MARK: - Compose (right column)
@@ -194,22 +169,17 @@ public struct SignoffMenuContent: View {
         VStack(alignment: .leading, spacing: Brand.Layout.spacingS) {
             sectionLabel("Compose", systemImage: "square.and.pencil")
 
-            if let bucket = appState.selectedBucket {
-                Text(bucket.toneLabel)
-                    .font(Brand.Typography.caption1)
-                    .foregroundStyle(Brand.accent(for: bucket.id, scheme: scheme))
-                    .lineLimit(2)
-            }
-
-            // Primary + secondary actions, full-width and obviously interactive.
-            // "Generate" previews the signoff first (copy to clipboard, no auto-paste),
-            // "Generate & Paste" lands it at the cursor immediately.
-            VStack(spacing: Brand.Layout.spacingS) {
+            // Action pair: "Generate & Paste" is the primary (the thing people
+            // open the popover to do); "Generate" is the secondary, paste-free
+            // variant whose only difference is no ⌘V at the cursor. Putting the
+            // paste action first matches the dominant intent and removes the
+            // "which one do I press" hesitation the old equal-weight pair caused.
+            VStack(spacing: Brand.Layout.spacingXS) {
                 Button {
                     NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .now)
-                    Task { await appState.generateNow(shouldAutoPaste: false) }
+                    Task { await appState.generateNow(shouldAutoPaste: true) }
                 } label: {
-                    Label("Generate", systemImage: "signature")
+                    Label("Generate & Paste", systemImage: "arrow.right.to.line")
                         .font(Brand.Typography.callout.weight(.semibold))
                         .frame(maxWidth: .infinity)
                 }
@@ -217,38 +187,21 @@ public struct SignoffMenuContent: View {
                 .controlSize(.large)
                 .tint(Brand.ember(for: scheme))
                 .disabled(appState.isGenerating || appState.selectedBucket == nil)
-                .accessibilityHint("Generate a signoff in the selected voice and copy it to the clipboard.")
+                .accessibilityHint("Generate a signoff and paste it at your cursor.")
                 .sensoryFeedback(.impact, trigger: appState.generatedText)
 
-                HStack(spacing: Brand.Layout.spacingS) {
-                    Button {
-                        NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .now)
-                        Task { await appState.generateNow(shouldAutoPaste: true) }
-                    } label: {
-                        Label("Generate & Paste", systemImage: "arrow.right.to.line")
-                            .font(Brand.Typography.callout.weight(.semibold))
-                            .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.large)
-                    .disabled(appState.isGenerating || appState.selectedBucket == nil)
-                    .accessibilityHint("Generate a signoff and paste it at your cursor.")
-
-                    Button {
-                        appState.copyMostRecent()
-                        NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .now)
-                        Task { @MainActor in
-                            await SystemSoundClient.shared.play(.tink)
-                        }
-                    } label: {
-                        Label("Copy Last", systemImage: "doc.on.doc")
-                            .font(Brand.Typography.callout.weight(.semibold))
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.large)
-                    .disabled(appState.recentGenerations.isEmpty)
-                    .accessibilityHint("Copy the most recent signoff to the clipboard.")
+                Button {
+                    NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .now)
+                    Task { await appState.generateNow(shouldAutoPaste: false) }
+                } label: {
+                    Label("Generate", systemImage: "signature")
+                        .font(Brand.Typography.callout.weight(.medium))
+                        .frame(maxWidth: .infinity)
                 }
+                .buttonStyle(.bordered)
+                .controlSize(.large)
+                .disabled(appState.isGenerating || appState.selectedBucket == nil)
+                .accessibilityHint("Generate a signoff and copy it to the clipboard. Press ⌘V yourself to paste.")
             }
 
             previewSection
@@ -259,7 +212,7 @@ public struct SignoffMenuContent: View {
         .padding(.vertical, Brand.Layout.spacingM)
     }
 
-    /// Section label with a leading icon — small caps, tertiary ink.
+    /// Section label — small caps, tertiary ink, with a leading icon.
     private func sectionLabel(_ title: String, systemImage: String) -> some View {
         Label(title, systemImage: systemImage)
             .font(.caption.weight(.semibold))
@@ -278,10 +231,8 @@ public struct SignoffMenuContent: View {
                 onAction: handleFixAction,
                 onDismiss: { appState.storeRecovery = nil }
             )
-        } else if let bucket = appState.selectedBucket, bucket.id == BucketID.custom.rawValue {
-            customFooterPreview(bucket)
         } else if let txt = appState.generatedText, !appState.isGenerating {
-            SignatureCardView(text: txt, providerKind: appState.lastProviderKind)
+            SignatureCardView(text: txt)
                 .transition(
                     reduceMotion ? .opacity : .opacity.combined(with: .move(edge: .top))
                 )
@@ -301,46 +252,6 @@ public struct SignoffMenuContent: View {
         }
     }
 
-    /// Custom bucket: live preview of the user-authored footer, rendered rich
-    /// (formatting + image) exactly as it will paste. No model involved.
-    @ViewBuilder
-    private func customFooterPreview(_ bucket: Bucket) -> some View {
-        if let footer = RichTextFooter.attributed(from: bucket.footerRTFData),
-           !footer.string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            VStack(alignment: .leading, spacing: Brand.Layout.spacingS) {
-                AttributedStringPreview(attributed: footer)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(Brand.Layout.spacingM)
-                    .background(
-                        RoundedRectangle(cornerRadius: Brand.Layout.radiusM, style: .continuous)
-                            .fill(Brand.Surface.card(for: scheme).opacity(scheme.isDark ? 0.5 : 0.6))
-                    )
-
-                Text("Your footer — Generate copies it, Generate & Paste inserts it at your cursor.")
-                    .font(Brand.Typography.caption1)
-                    .foregroundStyle(Brand.Ink.tertiary(for: scheme))
-            }
-            .transition(
-                reduceMotion ? .opacity : .opacity.combined(with: .move(edge: .top))
-            )
-        } else {
-            VStack(spacing: Brand.Layout.spacingXS) {
-                Text("No footer yet")
-                    .font(Brand.Typography.headline)
-                    .foregroundStyle(Brand.Ink.primary(for: scheme))
-                Text("Write one under Settings → Buckets → Custom.")
-                    .font(Brand.Typography.callout)
-                    .foregroundStyle(Brand.Ink.secondary(for: scheme))
-                    .multilineTextAlignment(.center)
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, Brand.Layout.spacingM)
-            .transition(
-                reduceMotion ? .opacity : .opacity.combined(with: .move(edge: .top))
-            )
-        }
-    }
-
     private var shouldShowFMAvailabilityCard: Bool {
         guard !dismissedFMCTA else { return false }
         let fmAvailability = FoundationModelsAvailability.shared
@@ -350,103 +261,51 @@ public struct SignoffMenuContent: View {
         }
     }
 
-    // MARK: - Tips (single contextual slot)
+    // MARK: - Footer row (provider badge + History / Settings / Quit)
+    ///
+    /// Compact utility row sitting under the voices in the left column — next
+    /// to the thing it acts on, not stretched across the whole popover. The
+    /// provider badge sits at the leading edge; History/Settings/Quit trail it.
+    private var footerRow: some View {
+        VStack(spacing: Brand.Layout.spacingS) {
+            Divider()
+                .overlay(Brand.Surface.divider(for: scheme))
 
-    private var tipStrip: some View {
-        HStack(spacing: Brand.Layout.spacingS) {
-            if let tip = activeTip {
-                TipView(tip, arrowEdge: .top)
-                    .tipBackground(Brand.Surface.card(for: scheme))
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-        }
-        .padding(.horizontal, Brand.Layout.spacingM)
-        .padding(.vertical, Brand.Layout.spacingS)
-        .transition(
-            reduceMotion ? .opacity : .opacity.combined(with: .move(edge: .top))
-        )
-    }
-
-    /// Pick the single most relevant tip: iterate in priority order and keep the
-    /// first that TipKit reports as `.available`. Runs once per popover open.
-    private func evaluateActiveTip() async {
-        guard activeTip == nil else { return }
-        let candidates: [any Tip] = [
-            SelectBucketTip.selectBucketTip,
-            GenerateNeedsBucketTip.generateNeedsBucketTip,
-            FirstGenerationTip.firstGenerationTip,
-            AccessibilityPermissionTip.accessibilityPermissionTip,
-            InputMonitoringPermissionTip.inputMonitoringPermissionTip,
-            TeachVoiceTip.teachVoiceTip,
-            CustomBucketTip.customBucketTip,
-        ]
-        for tip in candidates {
-            for await status in tip.statusUpdates {
-                if status == .available {
-                    activeTip = tip
+            HStack(spacing: Brand.Layout.spacingXS) {
+                if let provider = appState.lastProviderKind {
+                    Label(provider.badgeTitle, systemImage: provider.badgeSystemImage)
+                        .font(Brand.Typography.caption2.weight(.medium))
+                        .foregroundStyle(Brand.Ink.tertiary(for: scheme))
+                        .help("Generated by \(provider.badgeTitle)")
                 }
-                break
+
+                Spacer(minLength: 0)
+
+                footerButton("History", systemImage: "clock.arrow.circlepath") {
+                    showHistory = true
+                }
+                footerButton("Settings", systemImage: "gearshape") {
+                    // Close the popover first so Settings isn't hidden under it.
+                    NotificationCenter.default.post(name: .toggleMenuBarPopover, object: nil)
+                    NSApp.activate(ignoringOtherApps: true)
+                    openSettings()
+                }
+                footerButton("Quit", systemImage: "power", role: .destructive) {
+                    NSApp.terminate(nil)
+                }
             }
-            if activeTip != nil { return }
         }
-    }
-
-    // MARK: - Bottom Bar (status + Settings/Quit)
-
-    private var bottomBar: some View {
-        HStack(spacing: Brand.Layout.spacingS) {
-            permissionStatus
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-            Spacer(minLength: 0)
-
-            Button {
-                NotificationCenter.default.post(name: .openSettingsShortcutTriggered, object: nil)
-            } label: {
-                Image(systemName: "gearshape")
-                    .frame(width: 28, height: 28)
-            }
-            .buttonStyle(.bordered)
-            .help("Settings")
-            .accessibilityLabel("Settings")
-            .accessibilityHint("Open Signoff settings. Shortcut Control-Command-comma.")
-
-            Button(role: .destructive) {
-                NSApp.terminate(nil)
-            } label: {
-                Image(systemName: "power")
-                    .frame(width: 28, height: 28)
-            }
-            .buttonStyle(.bordered)
-            .help("Quit Signoff")
-            .accessibilityLabel("Quit Signoff")
-            .accessibilityHint("Quit Signoff. Shortcut Command-Q while Settings is open.")
-        }
-        .padding(.horizontal, Brand.Layout.spacingM)
-        .padding(.vertical, Brand.Layout.spacingS)
     }
 
     @ViewBuilder
-    private var permissionStatus: some View {
-        if !appState.inputMonitoringGranted || !appState.accessibilityGranted {
-            HStack(spacing: Brand.Layout.spacingXS) {
-                if !appState.inputMonitoringGranted {
-                    Image(systemName: "keyboard")
-                        .font(.caption)
-                        .foregroundStyle(.orange)
-                        .help("Input Monitoring not granted")
-                }
-                if !appState.accessibilityGranted {
-                    Image(systemName: "cursorarrow")
-                        .font(.caption)
-                        .foregroundStyle(.orange)
-                        .help("Accessibility not granted")
-                }
-            }
-            .accessibilityLabel("Permissions needed")
-        } else {
-            EmptyView()
+    private func footerButton(_ title: String, systemImage: String, role: ButtonRole? = nil, action: @escaping () -> Void) -> some View {
+        Button(role: role, action: action) {
+            Image(systemName: systemImage)
+                .frame(width: 26, height: 26)
         }
+        .buttonStyle(.borderless)
+        .help(title)
+        .accessibilityLabel(title)
     }
 
     // MARK: - Actions
@@ -474,7 +333,6 @@ public struct SignoffMenuContent: View {
     /// Show a toast notification for copy/share actions
     private func showToast(_ message: String) {
         toastMessage = message
-        // HIG accessibility: announce transient feedback to assistive tech.
         if let window = viewForAccessibility() {
             NSAccessibility.post(element: window,
                                  notification: .announcementRequested,
@@ -483,7 +341,6 @@ public struct SignoffMenuContent: View {
         withAnimation(Brand.Motion.safe(.spring(response: 0.3, dampingFraction: 0.7), reduceMotion: reduceMotion)) {
             showCopyToast = true
         }
-        // Auto-dismiss after 1.5s
         Task { @MainActor in
             try? await Task.sleep(nanoseconds: 1_500_000_000)
             withAnimation(Brand.Motion.safe(.easeOut(duration: 0.2), reduceMotion: reduceMotion)) {
@@ -491,6 +348,7 @@ public struct SignoffMenuContent: View {
             }
         }
     }
+
     /// Best-effort accessibility element for announcement. Uses the key window;
     /// in a menu bar popover this is the SwiftUI hosting window for the content.
     private func viewForAccessibility() -> AnyObject? {
@@ -498,11 +356,82 @@ public struct SignoffMenuContent: View {
     }
 }
 
+// MARK: - Splash
+
+/// Reveal splash overlay — a quick brand moment with write/unwrite animation.
+/// Phase 1: draw the signature on (~0.5s).
+/// Phase 2: hold the completed symbol (~0.1s).
+/// Phase 3: unwrite/erase the signature (~0.5s).
+/// Phase 4: fade the whole splash out (~0.2s) — the glass + glyph dissolve together.
+private enum SplashPhase { case idle, drawing, written, unwriting, fading }
+
+private struct SplashOverlay: View {
+    @Environment(\.colorScheme) private var scheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Binding var showSplash: Bool
+    @Binding var splashPhase: SplashPhase
+
+    // Separate animation triggers for drawOn and drawOff
+    @State private var drawOnTrigger = false
+    @State private var drawOffTrigger = false
+
+    var body: some View {
+        ZStack {
+            Color(nsColor: .windowBackgroundColor)
+                .ignoresSafeArea()
+
+            Image(systemName: "signature")
+                .font(.system(size: 64, weight: .semibold))
+                .foregroundStyle(Brand.ember(for: scheme))
+                .symbolEffect(.drawOn.individually, options: .speed(1.3), isActive: drawOnTrigger)
+                .symbolEffect(.drawOff.individually, options: .speed(1.3), isActive: drawOffTrigger)
+                .opacity(splashPhase == .fading ? 0.0 : 1.0)
+        }
+        // Fill the popover's content rect so the glyph truly centers — no
+        // separate ideal frame, which used to anchor the glyph to its own rect
+        // and let it read as a corner-offset duplicate.
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .zIndex(2)
+        .transition(.opacity)
+        .onAppear {
+            guard !reduceMotion else {
+                showSplash = false
+                SignoffMenuContent.hasLoadedSplash = true
+                return
+            }
+            // Phase 1: draw on (0.5s)
+            splashPhase = .drawing
+            drawOnTrigger = true
+
+            // Phase 2: unwriting (0.5s) - combine hold + unwrite
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                splashPhase = .unwriting
+                drawOnTrigger = false
+                drawOffTrigger = true
+            }
+
+            // Phase 3: fading out (0.2s)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                splashPhase = .fading
+                drawOffTrigger = false
+            }
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                showSplash = false
+                SignoffMenuContent.hasLoadedSplash = true
+            }
+        }
+    }
+}
+
+// MARK: - Bucket row (left column)
+
 /// Bucket row for menu content — glassy hover fill, ember selection, shortcut badge.
 @MainActor
 private struct MenuBucketRow: View {
     let bucket: Bucket
     let isSelected: Bool
+    let showShortcutHint: Bool
     let action: () -> Void
 
     @Environment(\.colorScheme) private var scheme
@@ -512,24 +441,37 @@ private struct MenuBucketRow: View {
     private var accent: Color { Brand.accent(for: bucket.id, scheme: scheme) }
     private var iconColor: Color { isSelected ? Brand.ember(for: scheme) : accent }
     private var nameFont: Font { Brand.Typography.callout.weight(.semibold) }
-    private var toneFont: Font { Brand.Typography.caption2 }
     private var primaryInk: Color { Brand.Ink.primary(for: scheme) }
     private var tertiaryInk: Color { Brand.Ink.tertiary(for: scheme) }
     private var emColor: Color { Brand.ember(for: scheme) }
     private var cardSurface: Color { Brand.Surface.card(for: scheme) }
-    private var dividerColor: Color { Brand.Surface.divider(for: scheme) }
-    private var hairline: CGFloat { Brand.Layout.hairline }
-    private var radiusM: CGFloat { Brand.Layout.radiusM }
-    private var spacingM: CGFloat { Brand.Layout.spacingM }
-    private var spacingXS: CGFloat { Brand.Layout.spacingXS }
 
-    /// Inline keyboard shortcut
+    /// The bucket icon with a subtle selection animation.
+    private var bucketIcon: some View {
+        let base = Image(systemName: bucket.iconSymbol)
+            .font(.body.weight(.medium))
+            .frame(width: 20)
+            .foregroundStyle(iconColor)
+            .symbolRenderingMode(.hierarchical)
+
+        if reduceMotion {
+            return AnyView(base)
+        }
+        return AnyView(base
+            .symbolEffect(.bounce, value: isSelected)
+            .symbolEffect(.pulse, value: isSelected)
+        )
+    }
+
+    /// Inline keyboard shortcut hint — reflects the bound modifier (ctrlOpt by default).
+    /// Honors the global "Show shortcut hints" setting so the column stays calm
+    /// for users who've turned the hints off.
     private var shortcutText: String? {
+        guard showShortcutHint else { return nil }
         let manager = ShortcutManager.shared
         let bindings = manager.decode(AppState.shared.settings.bucketShortcutsJSON)
         if let binding = bindings.first(where: { $0.bucketId == bucket.id }) {
-            let mod = binding.modifier == "optCmd" ? "⌥⌘" : "⌃⌘"
-            return "\(mod)\(binding.digitKey)"
+            return manager.displayLabel(for: binding)
         }
         return nil
     }
@@ -537,14 +479,12 @@ private struct MenuBucketRow: View {
     var body: some View {
         Button(action: {
             NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .now)
-            action()
+            withAnimation(Brand.Motion.safe(.spring(response: 0.3, dampingFraction: 0.7), reduceMotion: reduceMotion)) {
+                action()
+            }
         }) {
-            HStack(spacing: spacingM) {
-                Image(systemName: bucket.iconSymbol)
-                    .font(.body.weight(.medium))
-                    .frame(width: 20)
-                    .foregroundStyle(iconColor)
-                    .symbolRenderingMode(.hierarchical)
+            HStack(spacing: Brand.Layout.spacingM) {
+                bucketIcon
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(bucket.name)
@@ -552,15 +492,13 @@ private struct MenuBucketRow: View {
                         .foregroundStyle(primaryInk)
                         .lineLimit(1)
                     Text(bucket.toneLabel)
-                        .font(toneFont)
-                        .foregroundStyle(tertiaryInk)
-                        .textCase(.lowercase)
+                        .font(Brand.Typography.caption2)
+                        .foregroundStyle(tertiaryInk.opacity(0.85))
                         .lineLimit(1)
                 }
 
                 Spacer(minLength: 4)
 
-                // Inline keyboard shortcut hint
                 if let shortcut = shortcutText {
                     Text(shortcut)
                         .font(Brand.Typography.mono)
@@ -586,24 +524,26 @@ private struct MenuBucketRow: View {
                         )
                 }
             }
-            .padding(.horizontal, spacingM)
+            .padding(.horizontal, Brand.Layout.spacingM)
             .padding(.vertical, Brand.Layout.spacingS)
             .background(
-                RoundedRectangle(cornerRadius: radiusM, style: .continuous)
+                RoundedRectangle(cornerRadius: Brand.Layout.radiusM, style: .continuous)
                     .fill(backgroundFill)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: radiusM, style: .continuous)
+                RoundedRectangle(cornerRadius: Brand.Layout.radiusM, style: .continuous)
                     .stroke(isSelected ? emColor.opacity(0.35) : .clear,
-                            lineWidth: hairline)
+                            lineWidth: Brand.Layout.hairline)
             )
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .help(shortcutHintForBucket(bucket.id))
-        .onHover { h in isHovered = h }
-        .animation(hoverAnimation, value: isHovered)
-        .animation(selectAnimation, value: isSelected)
+        .onHover { h in
+            withAnimation(Brand.Motion.safe(.easeOut(duration: 0.15), reduceMotion: reduceMotion)) {
+                isHovered = h
+            }
+        }
         .accessibilityLabel("\(bucket.name) bucket")
         .accessibilityValue(isSelected ? "Selected" : "Not selected")
         .accessibilityHint(bucket.toneLabel)
@@ -620,20 +560,11 @@ private struct MenuBucketRow: View {
         return .clear
     }
 
-    private var hoverAnimation: Animation {
-        Brand.Motion.safe(.easeOut(duration: 0.15), reduceMotion: reduceMotion)
-    }
-
-    private var selectAnimation: Animation {
-        Brand.Motion.safe(.spring(response: 0.3, dampingFraction: 0.7), reduceMotion: reduceMotion)
-    }
-
     private func shortcutHintForBucket(_ id: String) -> String {
         let manager = ShortcutManager.shared
         let bindings = manager.decode(AppState.shared.settings.bucketShortcutsJSON)
         if let binding = bindings.first(where: { $0.bucketId == id }) {
-            let mod = binding.modifier == "optCmd" ? "⌥⌘" : "⌃⌘"
-            return "Shortcut: \(mod)\(binding.digitKey) — Click to select, then Generate"
+            return "Shortcut: \(manager.displayLabel(for: binding)) — Click to select, then Generate"
         }
         return "Click to select, then press Generate"
     }
@@ -687,7 +618,7 @@ private struct EmptyDelightView: View {
                     .foregroundStyle(Brand.Ink.primary(for: scheme))
                     .multilineTextAlignment(.center)
 
-                Text("Press Generate to draft one.")
+                Text("Pick a voice on the left, then Generate & Paste.")
                     .font(Brand.Typography.callout)
                     .foregroundStyle(Brand.Ink.secondary(for: scheme))
                     .multilineTextAlignment(.center)
@@ -708,316 +639,12 @@ private struct EmptyDelightView: View {
     }
 }
 
-// MARK: - Recent History Carousel
-
-/// Horizontal swipeable carousel of recent signoffs
-@MainActor
-private struct RecentHistorySection: View {
-    let generations: [SignoffGeneration]
-    let onSelect: (SignoffGeneration) -> Void
-    let onShare: (SignoffGeneration) -> Void
-    let onCopy: (SignoffGeneration) -> Void
-    let onThumbsUp: (SignoffGeneration) -> Void
-    let onThumbsDown: (SignoffGeneration) -> Void
-    let onTrash: (SignoffGeneration) -> Void
-
-    @Environment(\.colorScheme) private var scheme
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    private let visibleCount = 3
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: Brand.Layout.spacingS) {
-            HStack {
-                Text("Recent")
-                    .font(.caption.weight(.semibold))
-                    .textCase(.uppercase)
-                    .foregroundStyle(Brand.Ink.tertiary(for: scheme))
-                Spacer()
-                if generations.count > visibleCount {
-                    Text("\(generations.count) total")
-                        .font(Brand.Typography.caption2)
-                        .foregroundStyle(Brand.Ink.tertiary(for: scheme))
-                }
-            }
-
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: Brand.Layout.spacingS) {
-                    ForEach(Array(generations.prefix(10).enumerated()), id: \.element.id) { index, gen in
-                        RecentSignoffCard(
-                            generation: gen,
-                            isFirst: index == 0,
-                            action: { onSelect(gen) },
-                            shareAction: { onShare(gen) },
-                            copyAction: { onCopy(gen) },
-                            thumbsUpAction: { onThumbsUp(gen) },
-                            thumbsDownAction: { onThumbsDown(gen) },
-                            trashAction: { onTrash(gen) }
-                        )
-                        .staggeredEntrance(index: index, reduceMotion: reduceMotion)
-                    }
-                }
-                .padding(.horizontal, Brand.Layout.spacingXS)
-            }
-            .scrollTargetLayout()
-            .frame(height: 128)
-        }
-    }
-}
-
-/// Individual recent signoff card — glassy surface.
-@MainActor
-private struct RecentSignoffCard: View {
-    let generation: SignoffGeneration
-    let isFirst: Bool
-    let action: () -> Void
-    let shareAction: () -> Void
-    let copyAction: () -> Void
-    let thumbsUpAction: () -> Void
-    let thumbsDownAction: () -> Void
-    let trashAction: () -> Void
-
-    @Environment(\.colorScheme) private var scheme
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var isHovered = false
-
-    private var bucketAccent: Color {
-        Brand.accent(for: generation.bucketId, scheme: scheme)
-    }
-
-    /// Internal IDs (standard/unhinged) display as their public names
-    /// (Normal/Cynical).
-    private var displayBucketName: String {
-        switch generation.bucketId {
-        case BucketID.standard.rawValue: "Normal"
-        case BucketID.unhinged.rawValue: "Cynical"
-        default: generation.bucketId.capitalized
-        }
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: Brand.Layout.spacingXS) {
-            // Bucket indicator dot
-            HStack {
-                Circle()
-                    .fill(bucketAccent)
-                    .frame(width: 6, height: 6)
-                Text(displayBucketName)
-                    .font(Brand.Typography.caption2.weight(.medium))
-                    .foregroundStyle(Brand.Ink.tertiary(for: scheme))
-                Spacer()
-                Text(generation.createdAt, style: .relative)
-                    .font(Brand.Typography.caption2)
-                    .foregroundStyle(Brand.Ink.tertiary(for: scheme).opacity(0.6))
-            }
-
-            // Signoff text preview — the whole text is the primary "use this" action.
-            Button(action: action) {
-                Text(generation.text)
-                    .font(Brand.Typography.signoff)
-                    .foregroundStyle(Brand.Ink.primary(for: scheme))
-                    .lineLimit(3)
-                    .multilineTextAlignment(.leading)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .disabled(isFirst)
-            .help(isFirst ? "Current signoff" : "Use this signoff")
-            .accessibilityLabel(isFirst ? "Current signoff" : "Use this signoff")
-
-            // Action buttons
-            HStack(spacing: Brand.Layout.spacingXS) {
-                Button(action: copyAction) {
-                    Image(systemName: "doc.on.doc")
-                        .font(.caption.weight(.medium))
-                        .frame(width: 28, height: 28)
-                }
-                .buttonStyle(GlassButtonStyle(scheme: scheme, accent: bucketAccent))
-                .help("Copy to clipboard")
-                .accessibilityLabel("Copy to clipboard")
-
-                Button(action: shareAction) {
-                    Image(systemName: "square.and.arrow.up")
-                        .font(.caption.weight(.medium))
-                        .frame(width: 28, height: 28)
-                }
-                .buttonStyle(GlassButtonStyle(scheme: scheme, accent: bucketAccent))
-                .help("Share as image")
-                .accessibilityLabel("Share as image")
-
-                Button(action: thumbsUpAction) {
-                    Image(systemName: generation.isFavorite ? "hand.thumbsup.fill" : "hand.thumbsup")
-                        .font(.caption.weight(.medium))
-                        .frame(width: 28, height: 28)
-                }
-                .buttonStyle(GlassButtonStyle(scheme: scheme, accent: generation.isFavorite ? .green : bucketAccent))
-                .help(generation.isFavorite ? "Favorited — tap to unmark" : "Thumbs up — teach your voice")
-                .accessibilityLabel(generation.isFavorite ? "Favorited. Remove favorite." : "Thumbs up")
-
-                Button(action: thumbsDownAction) {
-                    Image(systemName: "hand.thumbsdown")
-                        .font(.caption.weight(.medium))
-                        .frame(width: 28, height: 28)
-                }
-                .buttonStyle(GlassButtonStyle(scheme: scheme, accent: bucketAccent))
-                .help("Thumbs down — teach your voice what to avoid")
-                .accessibilityLabel("Thumbs down")
-
-                Button(action: trashAction) {
-                    Image(systemName: "trash")
-                        .font(.caption.weight(.medium))
-                        .frame(width: 28, height: 28)
-                }
-                .buttonStyle(GlassButtonStyle(scheme: scheme, accent: bucketAccent))
-                .help("Delete from history")
-                .accessibilityLabel("Delete from history")
-            }
-        }
-        .padding(Brand.Layout.spacingS)
-        .frame(width: 250, height: 118)
-        .background(
-            RoundedRectangle(cornerRadius: Brand.Layout.radiusM, style: .continuous)
-                .fill(Brand.Surface.card(for: scheme).opacity(scheme.isDark ? 0.5 : 0.6))
-                .overlay(
-                    RoundedRectangle(cornerRadius: Brand.Layout.radiusM, style: .continuous)
-                        .stroke(
-                            isHovered ? bucketAccent.opacity(0.35) : Brand.Surface.divider(for: scheme),
-                            lineWidth: isHovered ? Brand.Layout.borderWeight : Brand.Layout.hairline
-                        )
-                )
-        )
-        .contentShape(Rectangle())
-        .onHover { h in
-            withAnimation(Brand.Motion.safe(.easeOut(duration: 0.15), reduceMotion: reduceMotion)) {
-                isHovered = h
-            }
-        }
-    }
-}
-
-/// Glass-style button for history cards
-private struct GlassButtonStyle: ButtonStyle {
-    let scheme: ColorScheme
-    let accent: Color
-
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .foregroundStyle(scheme == .dark ? .white : .black)
-            .background(
-                Circle()
-                    .fill(accent.opacity(configuration.isPressed ? 0.3 : 0.15))
-                    .overlay(
-                        Circle()
-                            .stroke(Brand.Surface.divider(for: scheme), lineWidth: Brand.Layout.hairline)
-                    )
-            )
-            .scaleEffect(configuration.isPressed ? 0.9 : 1.0)
-            .animation(.easeOut(duration: 0.1), value: configuration.isPressed)
-    }
-}
-
-// MARK: - Shareable Card
-
-/// Generates a beautiful shareable image of the signoff
-@MainActor
-private struct ShareableSignoffCard: View {
-    let text: String
-    let bucketId: String
-    let providerKind: GenerationProviderKind?
-    let userName: String?
-
-    @Environment(\.colorScheme) private var scheme
-
-    var body: some View {
-        ZStack {
-            // Parchment background with subtle texture
-            RoundedRectangle(cornerRadius: Brand.Layout.radiusL, style: .continuous)
-                .fill(Brand.Surface.page(for: scheme))
-
-            // Subtle ink wash edge
-            RoundedRectangle(cornerRadius: Brand.Layout.radiusL, style: .continuous)
-                .stroke(
-                    LinearGradient(
-                        colors: [
-                            Brand.accent(for: bucketId, scheme: scheme).opacity(0.4),
-                            Brand.accent(for: bucketId, scheme: scheme).opacity(0.0)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ),
-                    lineWidth: 2
-                )
-
-            VStack(alignment: .leading, spacing: Brand.Layout.spacingL) {
-                // Header with bucket personality
-                HStack(alignment: .top) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Label("Signoff", systemImage: "signature")
-                            .font(Brand.Typography.caption1.weight(.semibold))
-                            .foregroundStyle(Brand.Ink.secondary(for: scheme))
-                        Text(bucketTagline)
-                            .font(Brand.Typography.caption2)
-                            .foregroundStyle(Brand.Ink.tertiary(for: scheme))
-                    }
-                    Spacer()
-                    Image(systemName: "leaf.fill")
-                        .font(.system(size: 24))
-                        .foregroundStyle(Brand.accent(for: bucketId, scheme: scheme).opacity(0.6))
-                }
-
-                // The signoff text — beautifully typeset
-                Text(text)
-                    .font(Brand.Typography.signoff)
-                    .foregroundStyle(Brand.Ink.primary(for: scheme))
-                    .multilineTextAlignment(.leading)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .lineSpacing(4)
-
-                // Footer
-                HStack {
-                    if let userName {
-                        Text("— \(userName)")
-                            .font(Brand.Typography.footnote.italic())
-                            .foregroundStyle(Brand.Ink.secondary(for: scheme))
-                    }
-                    Spacer()
-                    // Watermark
-                    HStack(spacing: 4) {
-                        Image(systemName: "signature")
-                            .font(.caption2)
-                        Text("Signoff")
-                            .font(Brand.Typography.caption2.weight(.medium))
-                    }
-                    .foregroundStyle(Brand.Ink.tertiary(for: scheme).opacity(0.5))
-                }
-            }
-            .padding(Brand.Layout.spacingXL)
-        }
-        .frame(width: 520, height: 320)
-    }
-
-    private var bucketTagline: String {
-        switch bucketId {
-        case BucketID.standard.rawValue: "Normal voice"
-        case BucketID.professional.rawValue: "Professional voice"
-        case BucketID.unhinged.rawValue: "Cynical voice"
-        case BucketID.custom.rawValue: "Custom voice"
-        default: "Generated with Signoff"
-        }
-    }
-}
-
 // MARK: - Copy Toast
 
 /// Delightful toast confirmation for copy/share actions
 @MainActor
 private struct CopyToastView: View {
     let message: String
-
-    @Environment(\.colorScheme) private var scheme
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         VStack {
@@ -1049,78 +676,214 @@ private struct CopyToastView: View {
     }
 }
 
-private extension SignoffMenuContent {
-    /// Insert the recent history section into the view hierarchy
-    var recentHistorySection: some View {
-        RecentHistorySection(
-            generations: appState.recentGenerations,
-            onSelect: { gen in
-                appState.generatedText = gen.text
-                showToast("Loaded \"\(gen.text.prefix(30))…\"")
-            },
-            onShare: { gen in
-                shareSignoff(gen)
-            },
-            onCopy: { gen in
-                NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString(gen.text, forType: .string)
-                Task { @MainActor in
-                    await SystemSoundClient.shared.play(.tink)
-                    NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .now)
+// MARK: - History Page
+
+/// Full-page signed-off history — accessible via the clock icon in the footer.
+/// Same 580 pt ideal width as the main popover surface, with a back button to return.
+@MainActor
+private struct HistoryPageView: View {
+    let onBack: () -> Void
+    @EnvironmentObject private var appState: AppState
+    @Environment(\.colorScheme) private var scheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var toastMessage = ""
+    @State private var showToast = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // Header with back button
+            HStack {
+                Button {
+                    onBack()
+                } label: {
+                    Label("Back", systemImage: "chevron.left")
+                        .font(.callout.weight(.medium))
                 }
-                showToast("Copied \"\(gen.text.prefix(30))…\"")
-            },
-            onThumbsUp: { gen in
-                appState.applyFeedback(gen, liked: true)
-                showToast("Liked — I'll write more like this.")
-            },
-            onThumbsDown: { gen in
-                appState.applyFeedback(gen, liked: false)
-                showToast("Noted — I'll avoid this style.")
-            },
-            onTrash: { gen in
-                appState.deleteGeneration(gen)
-                showToast("Removed from history.")
+                .buttonStyle(.borderless)
+                .accessibilityLabel("Back to main view")
+
+                Spacer()
+
+                Text("History")
+                    .font(.headline)
+                    .foregroundStyle(Brand.Ink.primary(for: scheme))
             }
-        )
+            .padding(.horizontal, Brand.Layout.spacingM)
+            .padding(.vertical, Brand.Layout.spacingS)
+
+            Divider()
+                .overlay(Brand.Surface.divider(for: scheme))
+
+            if appState.recentGenerations.isEmpty {
+                emptyHistory
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: Brand.Layout.spacingS) {
+                        ForEach(appState.recentGenerations, id: \.id) { gen in
+                            HistoryRow(
+                                generation: gen,
+                                onCopy: { copyGen(gen) },
+                                onThumbsUp: { appState.applyFeedback(gen, liked: true) },
+                                onThumbsDown: { appState.applyFeedback(gen, liked: false) },
+                                onTrash: { appState.deleteGeneration(gen) },
+                                onSelect: { appState.generatedText = gen.text }
+                            )
+                        }
+                    }
+                    .padding(Brand.Layout.spacingM)
+                }
+            }
+        }
+        .overlay(alignment: .bottom) {
+            if showToast {
+                CopyToastView(message: toastMessage)
+                    .padding(.bottom, 12)
+                    .transition(.opacity)
+            }
+        }
+        .animation(.easeOut(duration: 0.2), value: showToast)
     }
 
-    /// Export signoff as shareable image
-    private func shareSignoff(_ generation: SignoffGeneration) {
-        let card = ShareableSignoffCard(
-            text: generation.text,
-            bucketId: generation.bucketId,
-            providerKind: GenerationProviderKind(rawValue: generation.providerRaw),
-            userName: appState.profile.name.isEmpty ? nil : appState.profile.name
-        )
+    private var emptyHistory: some View {
+        VStack(spacing: Brand.Layout.spacingM) {
+            Image(systemName: "clock.arrow.circlepath")
+                .font(.system(size: 32, weight: .semibold))
+                .foregroundStyle(Brand.Ink.tertiary(for: scheme))
+            Text("No History Yet")
+                .font(Brand.Typography.headline)
+                .foregroundStyle(Brand.Ink.primary(for: scheme))
+            Text("Generated signoffs will appear here so you can reuse a good one.")
+                .font(Brand.Typography.callout)
+                .foregroundStyle(Brand.Ink.secondary(for: scheme))
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, Brand.Layout.spacingXL)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
 
-        let renderer = ImageRenderer(content: card)
-        renderer.scale = 2.0 // Retina
-        if let nsImage = renderer.nsImage {
-            let pasteboard = NSPasteboard.general
-            pasteboard.clearContents()
-            pasteboard.writeObjects([nsImage])
+    private func copyGen(_ gen: SignoffGeneration) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(gen.text, forType: .string)
+        Task { @MainActor in
+            await SystemSoundClient.shared.play(.tink)
+            NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .now)
+        }
+        flashToast("Copied")
+    }
 
-            Task { @MainActor in
-                await SystemSoundClient.shared.play(.pop)
-                NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .now)
-            }
-            showToast("Signoff copied as image")
+    private func flashToast(_ msg: String) {
+        toastMessage = msg
+        withAnimation(.easeOut(duration: 0.15)) { showToast = true }
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 1_500_000_000)
+            withAnimation(.easeOut(duration: 0.15)) { showToast = false }
         }
     }
 }
 
-/// macOS 26 Liquid Glass surface for the menu bar popover. On macOS 26 the
-/// native `glassEffect` replaces the fallback material with the system's
-/// Liquid Glass treatment; below 26 it degrades to the ultra-thin material
-/// already applied above (so this modifier is additive, never lossy).
+/// A single history-row — signoff text, bucket badge, timestamp, and a compact
+/// action bar (copy, thumbs, trash).
 @MainActor
-private struct LiquidGlassBackground: ViewModifier {
-    func body(content: Content) -> some View {
-        if #available(macOS 26.0, *) {
-            content.glassEffect()
-        } else {
-            content
+private struct HistoryRow: View {
+    let generation: SignoffGeneration
+    let onCopy: () -> Void
+    let onThumbsUp: () -> Void
+    let onThumbsDown: () -> Void
+    let onTrash: () -> Void
+    let onSelect: () -> Void
+
+    @Environment(\.colorScheme) private var scheme
+    @State private var isHovered = false
+
+    private var bucketAccent: Color {
+        Brand.accent(for: generation.bucketId, scheme: scheme)
+    }
+
+    private var displayBucketName: String {
+        switch generation.bucketId {
+        case BucketID.standard.rawValue: "Normal"
+        case BucketID.unhinged.rawValue:  "Cynical"
+        default: generation.bucketId.capitalized
         }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Brand.Layout.spacingXS) {
+            HStack {
+                Circle()
+                    .fill(bucketAccent)
+                    .frame(width: 6, height: 6)
+                Text(displayBucketName)
+                    .font(Brand.Typography.caption2.weight(.medium))
+                    .foregroundStyle(Brand.Ink.tertiary(for: scheme))
+                Spacer()
+                Text(generation.createdAt, style: .relative)
+                    .font(Brand.Typography.caption2)
+                    .foregroundStyle(Brand.Ink.tertiary(for: scheme).opacity(0.6))
+            }
+
+            Button(action: onSelect) {
+                Text(generation.text)
+                    .font(Brand.Typography.signoff)
+                    .foregroundStyle(Brand.Ink.primary(for: scheme))
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("Click to set as current signoff")
+
+            HStack(spacing: Brand.Layout.spacingXS) {
+                SmallIconButton(symbol: "doc.on.doc", action: onCopy, help: "Copy")
+                SmallIconButton(
+                    symbol: generation.isFavorite ? "hand.thumbsup.fill" : "hand.thumbsup",
+                    tint: generation.isFavorite ? .green : nil,
+                    action: onThumbsUp,
+                    help: generation.isFavorite ? "Favorited" : "Thumbs up"
+                )
+                SmallIconButton(symbol: "hand.thumbsdown", action: onThumbsDown, help: "Thumbs down")
+                SmallIconButton(symbol: "trash", action: onTrash, help: "Delete")
+            }
+        }
+        .padding(Brand.Layout.spacingS)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: Brand.Layout.radiusS, style: .continuous)
+                .fill(Brand.Surface.card(for: scheme).opacity(scheme.isDark ? 0.5 : 0.6))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: Brand.Layout.radiusS, style: .continuous)
+                .stroke(
+                    isHovered ? bucketAccent.opacity(0.25) : Brand.Surface.divider(for: scheme),
+                    lineWidth: Brand.Layout.hairline
+                )
+        )
+        .onHover { h in
+            withAnimation(.easeOut(duration: 0.12)) { isHovered = h }
+        }
+    }
+}
+
+/// Tiny 28×28pt icon button — used in the history row action bar.
+@MainActor
+private struct SmallIconButton: View {
+    let symbol: String
+    var tint: Color? = nil
+    let action: () -> Void
+    let help: String
+
+    @Environment(\.colorScheme) private var scheme
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.caption.weight(.medium))
+                .frame(width: 28, height: 28)
+        }
+        .buttonStyle(.borderless)
+        .help(help)
+        .accessibilityLabel(help)
     }
 }

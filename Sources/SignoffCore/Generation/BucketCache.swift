@@ -1,4 +1,5 @@
 import Foundation
+import os.log
 
 /// Per-bucket phrase cache for instant generation.
 ///
@@ -16,6 +17,7 @@ import Foundation
 public final class BucketCache: @unchecked Sendable {
     public static let shared = BucketCache()
 
+    private static let log = Logger(subsystem: "com.signoff", category: "BucketCache")
     private static let maxCacheSize = 5
     private static let refillThreshold = 2
 
@@ -53,11 +55,13 @@ public final class BucketCache: @unchecked Sendable {
     /// Foundation Models generation. There is no static fallback.
     public func pop(bucketId: String) -> CacheHit? {
         guard var entry = caches[bucketId], !entry.phrases.isEmpty else {
+            Self.log.info("[BucketCache] pop: MISS for bucketId=\(bucketId, privacy: .public)")
             return nil
         }
         let phrase = entry.phrases.removeFirst()
         let source = entry.source
         caches[bucketId] = entry
+        Self.log.info("[BucketCache] pop: HIT for bucketId=\(bucketId, privacy: .public), phrase=\(phrase, privacy: .public), remaining=\(entry.phrases.count, privacy: .public), cacheKeys=\(Array(self.caches.keys), privacy: .public)")
         return CacheHit(phrase: phrase, source: source)
     }
 
@@ -66,7 +70,7 @@ public final class BucketCache: @unchecked Sendable {
         var current = caches[bucketId] ?? BucketEntry(phrases: [], source: source)
         var merged = current.phrases
         for phrase in phrases {
-            let norm = phrase.trimmingCharacters(in: .whitespacesAndNewlines)
+            let norm = ProviderResponseGuard.sanitizeSignoff(phrase.trimmingCharacters(in: .whitespacesAndNewlines))
             guard !norm.isEmpty, !merged.contains(norm) else { continue }
             merged.append(norm)
         }
@@ -74,6 +78,9 @@ public final class BucketCache: @unchecked Sendable {
         current.source = source
         current.lastRefilled = Date()
         caches[bucketId] = current
+        // Log the sanitized phrases
+        let sanitized = phrases.map { ProviderResponseGuard.sanitizeSignoff($0) }
+        Self.log.info("[BucketCache] fill: bucketId=\(bucketId, privacy: .public), added=\(sanitized, privacy: .public), total=\(current.phrases.count, privacy: .public), cacheKeys=\(Array(self.caches.keys), privacy: .public)")
     }
 
     /// Warm up all buckets at launch by asking Foundation Models to fill them
@@ -81,8 +88,10 @@ public final class BucketCache: @unchecked Sendable {
     /// from a static list** — if a bucket has no cache yet, its first
     /// generation is a real on-device call that also fills the cache.
     public func warmup(buckets: [Bucket], profile: UserProfileSnapshot?, ageGroup: AgeGroup = .genZ) {
+        Self.log.info("[BucketCache] warmup: starting for \(buckets.count, privacy: .public) buckets")
         let voiceSnapshot = PromptComposer.VoiceProfileSnapshot(from: VoiceProfile.shared)
         for bucket in buckets {
+            Self.log.info("[BucketCache] warmup: requesting refill for bucket=\(bucket.id, privacy: .public)")
             requestFMFRefill(bucket: bucket, profile: profile, ageGroup: ageGroup, voiceSnapshot: voiceSnapshot)
         }
     }
@@ -90,6 +99,7 @@ public final class BucketCache: @unchecked Sendable {
     private func requestFMFRefill(bucket: Bucket, profile: UserProfileSnapshot?, ageGroup: AgeGroup, voiceSnapshot: PromptComposer.VoiceProfileSnapshot) {
         guard let template = PromptTemplate.load(bucket: bucket.id) ?? .fallback as PromptTemplate? else { return }
         let existing = caches[bucket.id]?.phrases ?? []
+        Self.log.info("[BucketCache] requestFMFRefill: bucket=\(bucket.id, privacy: .public), template.system=\(template.system.prefix(50), privacy: .public)")
         GenerationRefillCoordinator.shared.refillIfNeeded(
             bucketId: bucket.id,
             template: template,
@@ -112,5 +122,11 @@ public final class BucketCache: @unchecked Sendable {
     public func stats(bucketId: String) -> (count: Int, source: GenerationProviderKind?, lastRefilled: Date?) {
         guard let entry = caches[bucketId] else { return (0, nil, nil) }
         return (entry.count, entry.source, entry.lastRefilled)
+    }
+
+    /// Clear all cached phrases — used on launch to flush stale pre-sanitization entries.
+    public func clearAll() {
+        Self.log.info("[BucketCache] clearAll: clearing all caches")
+        caches.removeAll()
     }
 }

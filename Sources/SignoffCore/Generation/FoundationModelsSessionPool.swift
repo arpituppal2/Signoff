@@ -37,16 +37,8 @@ public actor FoundationModelsSessionPool {
         prompt: String,
         options: GenerationOptions = GenerationOptions(temperature: 0.7, maximumResponseTokens: 64)
     ) async throws -> SignoffOutput {
-        var session = session(for: bucketId, instructions: instructions)
-        if session.isResponding {
-            // Another request owns this session — spin a fresh one so we don't
-            // throw concurrentRequests into the provider chain.
-            session = makeSession(instructions: instructions)
-            entries[bucketId] = Entry(
-                instructionsFingerprint: fingerprint(instructions),
-                session: session
-            )
-        }
+        // Always create a fresh session to avoid content filter state issues
+        let session = makeSession(instructions: instructions)
 
         do {
             let response = try await session.respond(

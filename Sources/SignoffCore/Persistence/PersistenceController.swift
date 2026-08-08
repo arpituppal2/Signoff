@@ -269,14 +269,14 @@ public final class PersistenceController: @unchecked Sendable {
         }
     }
 
-    /// v3 slim: reconcile any persisted store against the 4-bucket set
-    /// (Normal / Professional / Cynical / Custom).
+    /// v3 slim: reconcile any persisted store against the 3-bucket set
+    /// (Normal / Professional / Cynical).
     ///
     /// Existing installs have 6 buckets (incl. "My List" and "Footer") with
     /// legacy names ("Standard"/"Unhinged") and sort orders. This migrates in
-    /// place — internal IDs stay stable (standard/professional/unhinged/custom),
+    /// place — internal IDs stay stable (standard/professional/unhinged),
     /// display names change, list/footer are disabled, and ordering matches the
-    /// new shortcut mapping (Normal=1 … Custom=4). Idempotent.
+    /// new shortcut mapping (Normal=1 … Cynical=3). Idempotent.
     public func slimBucketsIfNeeded() throws {
         let descriptor = FetchDescriptor<Bucket>()
         let all = try context.fetch(descriptor)
@@ -295,10 +295,6 @@ public final class PersistenceController: @unchecked Sendable {
             case BucketID.unhinged.rawValue:
                 if bucket.name != "Cynical" { bucket.name = "Cynical"; changed = true }
                 if bucket.sortOrder != 2 { bucket.sortOrder = 2; changed = true }
-                if !bucket.isEnabled { bucket.isEnabled = true; changed = true }
-            case BucketID.custom.rawValue:
-                if bucket.name != "Custom" { bucket.name = "Custom"; changed = true }
-                if bucket.sortOrder != 3 { bucket.sortOrder = 3; changed = true }
                 if !bucket.isEnabled { bucket.isEnabled = true; changed = true }
             case BucketID.list.rawValue, BucketID.footer.rawValue:
                 if bucket.isEnabled { bucket.isEnabled = false; changed = true }
@@ -386,24 +382,19 @@ public final class PersistenceController: @unchecked Sendable {
         try context.save()
     }
 
-    /// v3: explicit thumbs feedback. Applies to the voice profile (adopted vs
-    /// rejected patterns) and marks the entry as favorite for `thumbsUp`.
+    /// v3: explicit thumbs feedback. Marks the entry as favorite for `thumbsUp`.
     public func applyFeedback(_ generation: SignoffGeneration, liked: Bool) throws {
-        let profile = VoiceProfile.shared
         if liked {
-            profile.adoptSignoff(generation.text)
             if !generation.isFavorite {
                 generation.isFavorite = true
             }
         } else {
-            profile.rejectSignoff(generation.text)
             if generation.isFavorite {
                 generation.isFavorite = false
             }
         }
         generation.wasCopied = true
         try context.save()
-        try? saveVoiceProfile(profile)
     }
 
     /// v3: retention window. History older than `days` days is purged — but
@@ -427,24 +418,9 @@ public final class PersistenceController: @unchecked Sendable {
 
     public func saveVoiceProfile(_ profile: VoiceProfile) throws {
         if let existing = try fetchVoiceProfile() {
-            // Update existing
-            existing.qualityLexicalFingerprintData = profile.qualityLexicalFingerprintData
-            existing.noiseLexicalFingerprintData = profile.noiseLexicalFingerprintData
-            existing.qualityAvgSentenceLength = profile.qualityAvgSentenceLength
-            existing.qualityPunctuationStyleData = profile.qualityPunctuationStyleData
-            existing.qualityFormalityScore = profile.qualityFormalityScore
-            existing.qualityEmojiFrequency = profile.qualityEmojiFrequency
-            existing.qualityVocabularyRichness = profile.qualityVocabularyRichness
-            existing.adoptedSignoffPatternsData = profile.adoptedSignoffPatternsData
-            existing.rejectedSignoffPatternsData = profile.rejectedSignoffPatternsData
-            existing.contextQualityWeightsData = profile.contextQualityWeightsData
-            existing.lastUpdated = profile.lastUpdated
-            existing.version = profile.version
-            existing.totalQualityObservations = profile.totalQualityObservations
-            existing.totalNoiseObservations = profile.totalNoiseObservations
-            existing.isLearningPaused = profile.isLearningPaused
+            // Update existing - minimal VoiceProfile only has id, learningConsentGranted, lastUpdated
             existing.learningConsentGranted = profile.learningConsentGranted
-            existing.observedAppsData = profile.observedAppsData
+            existing.lastUpdated = profile.lastUpdated
             try context.save()
         } else {
             context.insert(profile)

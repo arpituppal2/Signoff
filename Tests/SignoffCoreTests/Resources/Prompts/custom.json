@@ -1,0 +1,46 @@
+{
+  "system": "Write ONE email signoff. 3–15 words. Ends with a comma. Capitalize first word.\n\nIf instructions provided: follow them.\nIf phrase list provided: pick from it verbatim.\nIf neither: write a normal professional signoff (Thanks, Best regards, Appreciate it, Talk soon).\n\nNEVER: memes, jokes, all caps, LOL/ROFL/LMAO, bro/dude, BEHOLD/SURPRISE/FYI/SHOCKER/REVOLUTION, quantum/neural/algorithm/binary/tech, my inbox: ...",
+  "rules": [
+    "Output ONLY the signoff ending with a comma. Nothing else.",
+    "End with EXACTLY ONE comma.",
+    "3–15 words. Normal professional unless instructions say otherwise.",
+    "If phrase list exists, pick from it verbatim.",
+    "Capitalize first word.",
+    "NEVER: LOL, ROFL, LMAO, haha, bro, dude, meme, glitch, quantum, matrix, wifi, chaos, paradox, trampoline, toaster, disco, carnival, kazoo, black hole, detonator, existential, debug, BEHOLD, SURPRISE, FYI, SHOCKER, WTF, OMG, SMH, TBH, IMHO, AFK, BRB, IDK, JK, BEHOLD:, SURPRISE:, REVOLUTION:, FYI:, SHOCKER:, MY inbox, my inbox:, auditioned, podcast, theme song, stand-up, keyboard rage, black hole, admin, ticking time bomb, detonator, typed an existential crisis, decoded, remix, vault, digital rave, upgraded, sarcasm mode, laser pointers, quantum leap, binary code, neural nets, algorithm, brain fried, snack time, snail mail, rebellious art form, bravo, whisper, caffeinated jukebox"
+  ],
+  "userVariants": [
+    {"when": {}, "user": "Write ONE email signoff ending with a comma. Follow instructions if provided. If phrase list provided, pick from it verbatim. If neither, write a normal professional signoff like Thanks, Best regards, Appreciate it, Talk soon. NO memes. NO jokes. NO all caps. NO tech terms. NO 'my inbox' constructions. Capitalize first word."}
+  ],
+  "guardWords": ["warmly", "best", "regards", "cheers", "talk soon", "hope this helps", "best regards", "kind regards", "yours truly", "lol", "LOL", "lol,", "ROFL", "rofl", "LMAO", "lmao", "HAHA", "haha", "bro", "dude", "bro,", "dude,", "meme", "glitch", "glitching", "universe", "unlocked", "quantum", "kazoo", "toaster", "disco ball", "trampoline", "carnival", "paradox", "chaos", "sharp", "charming", "pixelated", "wi-fi", "wifi", "matrix", "inbox alive", "blame my", "debug mode", "shuffle reality", "dominate laugh", "stay weird", "stay alive", "BEHOLD", "FYI", "SURPRISE", "HOLY SHIT", "SHOCKER", "WTF", "OMG", "SMH", "TBH", "IMHO", "AFK", "BRB", "IDK", "JK", "BEHOLD:", "SURPRISE:", "REVOLUTION:", "FYI:", "SHOCKER:", "MY inbox", "my inbox:", "auditioned", "podcast", "theme song", "stand-up", "keyboard rage", "black hole", "admin", "ticking time bomb", "detonator", "typed an existential crisis", "decoded", "remix", "vault", "digital rave", "upgraded", "sarcasm mode", "laser pointers", "quantum leap", "binary code", "neural nets", "algorithm", "brain fried", "snack time", "snail mail", "rebellious art form", "bravo", "whisper", "caffeinated jukebox", "demands a remix", "plays jazz", "plays jazz riffs", "lifetime supply", "signed a lifetime"]
+  ],
+  "positiveExamples": [
+    "Thanks for pushing this forward,",
+    "Onward,",
+    "Talk after the launch,",
+    "Per our conversation,",
+    "All set on my end,",
+    "Here if you need anything,",
+    "Thanks,",
+    "Best regards,",
+    "Appreciate it,",
+    "Talk soon,",
+    "Thanks for your time,",
+    "Regards,"
+  ],
+  "negativeExamples": [
+    "LOL, I'm just a meme, dude,",
+    "BEWARE: Your inbox is now a trampoline, bro,",
+    "FYI: Your brain is now a toaster, bro,",
+    "SURPRISE: Your keyboard is now a kazoo, bro,",
+    "HOLY SHIT: Your inbox is now a disco ball, bro,",
+    "SHOCKER: Your inbox is now a carnival, bro,",
+    "LOL, inbox still glitching, but who's counting,",
+    "Pixelated: inbox, but at least the memes are sharp,",
+    "Wi-Fi: paradox, but at least the signal's charming,",
+    "Matrix, I'm just a shiny glitch,",
+    "OK.",
+    "Let me know if you have any questions.",
+    "with a note,",
+    "with regards,"
+  ]
+}

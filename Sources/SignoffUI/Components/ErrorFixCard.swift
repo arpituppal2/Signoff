@@ -32,7 +32,7 @@ public enum SignoffFailure: Equatable, CaseIterable {
         case .a11yDenied:
             return "Signoff needs Accessibility to paste your signoff at the cursor without switching apps."
         case .inputMonitoringDenied:
-            return "Global shortcuts (⌃⌘1–4) need Input Monitoring. This is separate from Accessibility."
+            return "Global shortcuts (⌃⌥1–4) need Input Monitoring. This is separate from Accessibility."
         case .fmUnavailable:
             return "Your Mac's on-device model isn't ready yet, so Signoff can't draft right now. Enable Apple Intelligence in System Settings and try again — Signoff never falls back to canned text."
         case .fallbackExhausted:
@@ -55,7 +55,7 @@ public enum SignoffFailure: Equatable, CaseIterable {
         case .fmUnavailable:
             return .message("Your Mac's AI system needs a moment. Try Generate again.")
         case .fallbackExhausted:
-            return .openSettings(pane: .buckets)
+            return .openSettings(pane: .general)
         case .rateLimited:
             return .message("Try again in an hour.")
         case .storeCorrupt:
@@ -76,8 +76,6 @@ public enum FixAction: Equatable {
 /// Toolbar panes for the Settings scene.
 public enum SettingsPane: String, Equatable, Hashable, CaseIterable, Identifiable, Sendable {
     case general
-    case profile
-    case buckets
     case shortcuts
     case privacy
     case advanced
@@ -87,8 +85,6 @@ public enum SettingsPane: String, Equatable, Hashable, CaseIterable, Identifiabl
     public var title: String {
         switch self {
         case .general: return "General"
-        case .profile: return "Profile"
-        case .buckets: return "Buckets"
         case .shortcuts: return "Shortcuts"
         case .privacy: return "Privacy"
         case .advanced: return "Advanced"
@@ -98,8 +94,6 @@ public enum SettingsPane: String, Equatable, Hashable, CaseIterable, Identifiabl
     public var systemImage: String {
         switch self {
         case .general: return "gearshape"
-        case .profile: return "person.crop.circle"
-        case .buckets: return "square.stack.3d.up"
         case .shortcuts: return "keyboard"
         case .privacy: return "hand.raised.fill"
         case .advanced: return "gearshape.2"
@@ -109,8 +103,8 @@ public enum SettingsPane: String, Equatable, Hashable, CaseIterable, Identifiabl
     public static func resolve(_ raw: String) -> SettingsPane {
         if let pane = SettingsPane(rawValue: raw) { return pane }
         switch raw {
-        case "account", "help": return .profile
-        case "license": return .general
+        case "account", "help", "profile": return .general
+        case "license", "buckets": return .general
         case "history": return .privacy
         default: return .general
         }
@@ -176,7 +170,7 @@ public struct ErrorFixCard: View {
         case .openSettings(let pane):
             switch pane {
             case .privacy: return "Open Privacy"
-            case .buckets: return "Open Buckets"
+            case .shortcuts: return "Open Shortcuts"
             default: return "Open Settings"
             }
         case .openURL:            return "Open Link"

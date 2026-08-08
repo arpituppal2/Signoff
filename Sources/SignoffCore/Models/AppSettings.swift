@@ -27,6 +27,51 @@ public final class AppSettings {
     /// stays reachable via `SettingsSceneOpener` / app reopen / ⌘, while frontmost.
     public var showsStatusItem: Bool = true
 
+    /// When enabled, generating a signoff within the cooldown window replaces
+    /// the previously-pasted one (selects it and pastes over) instead of
+    /// appending at the cursor. Paired with `rapidReplaceCooldownSeconds`.
+    public var rapidReplaceEnabled: Bool = true
+    /// Seconds after a paste during which a retrigger replaces the previous pasted
+    /// text. Options: 2, 3, 5, 10, 15, 30, 60. Default 3.
+    public var rapidReplaceCooldownSeconds: Int = 3
+    /// When enabled, shortcuts auto-paste (⌘V) at cursor; when disabled,
+    /// shortcuts only copy to clipboard (manual ⌘V). Default true.
+    public var shortcutAutoPaste: Bool = true
+    /// Shortcut for "After Signoff Only" — pastes just the footer content.
+    /// Serialized as JSON matching BucketBinding shape (digitKey + modifier).
+    public var afterSignoffShortcutJSON: String = ""
+
+    /// Serialized NSAttributedString appended after the generated signoff.
+    /// Stored as Data so SwiftData can persist it; exposes a computed
+    /// `afterSignoffAttributedString` for read/write and a `afterSignoffText`
+    /// convenience for plain-text consumers.
+    public var afterSignoffAttributedStringData: Data?
+
+    /// Convenience: plain-text version (used by simple consumers / migrations).
+    public var afterSignoffText: String {
+        get {
+            guard let data = afterSignoffAttributedStringData,
+                  let attr = try? NSKeyedUnarchiver.unarchivedObject(ofClass: NSAttributedString.self, from: data) else { return "" }
+            return attr.string
+        }
+        set {
+            let attr = NSMutableAttributedString(string: newValue)
+            afterSignoffAttributedStringData = try? NSKeyedArchiver.archivedData(withRootObject: attr, requiringSecureCoding: false)
+        }
+    }
+
+    /// The attributed string editor value, or an empty attributed string.
+    public var afterSignoffAttributedString: NSAttributedString {
+        get {
+            guard let data = afterSignoffAttributedStringData,
+                  let attr = try? NSKeyedUnarchiver.unarchivedObject(ofClass: NSAttributedString.self, from: data) else { return NSAttributedString() }
+            return attr
+        }
+        set {
+            afterSignoffAttributedStringData = try? NSKeyedArchiver.archivedData(withRootObject: newValue, requiringSecureCoding: false)
+        }
+    }
+
     public var createdAt: Date
     public var updatedAt: Date
 
@@ -75,13 +120,12 @@ public final class AppSettings {
     }
 
     /// Matches `ShortcutManager.defaults()`: Normal=1, Professional=2,
-    /// Cynical=3, Custom=4 (v3 bucket slim / v3.5 naming).
+    /// Cynical=3.
     public static let defaultBucketShortcutsJSON: String = {
         let pairs = [
             ("standard", "1"), ("professional", "2"), ("unhinged", "3"),
-            ("custom", "4"),
         ]
-        let encoded = pairs.map { "{\"bucketId\":\"\($0.0)\",\"digitKey\":\"\($0.1)\",\"modifier\":\"cmdCtrl\"}" }.joined(separator: ",")
+        let encoded = pairs.map { "{\"bucketId\":\"\($0.0)\",\"digitKey\":\"\($0.1)\",\"modifier\":\"ctrlOpt\"}" }.joined(separator: ",")
         return "[\(encoded)]"
     }()
 }

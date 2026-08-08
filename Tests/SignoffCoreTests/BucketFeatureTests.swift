@@ -9,16 +9,15 @@ final class BucketFeatureTests: XCTestCase {
 
     // MARK: - Bucket defaults
 
-    func testDefaultBucketsAreNormalProfessionalCynicalCustom() {
+    func testDefaultBucketsAreNormalProfessionalCynical() {
         let buckets = Bucket.defaultBuckets()
-        XCTAssertEqual(buckets.map(\.name), ["Normal", "Professional", "Cynical", "Custom"])
+        XCTAssertEqual(buckets.map(\.name), ["Normal", "Professional", "Cynical"])
         XCTAssertEqual(buckets.map(\.id),
                        [BucketID.standard.rawValue,
                         BucketID.professional.rawValue,
-                        BucketID.unhinged.rawValue,
-                        BucketID.custom.rawValue])
-        XCTAssertEqual(buckets.map(\.sortOrder), [0, 1, 2, 3])
-        XCTAssertEqual(buckets.map(\.iconSymbol).count, 4)
+                        BucketID.unhinged.rawValue])
+        XCTAssertEqual(buckets.map(\.sortOrder), [0, 1, 2])
+        XCTAssertEqual(buckets.map(\.iconSymbol).count, 3)
     }
 
     func testCynicalDefaultsToDeadpanAndNSFWOff() {

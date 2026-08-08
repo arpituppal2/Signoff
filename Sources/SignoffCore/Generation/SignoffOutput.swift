@@ -10,7 +10,7 @@ import FoundationModels
 @available(macOS 26, *)
 @Generable(description: "A short email signoff phrase.")
 public struct SignoffOutput: Sendable {
-    @Guide(description: "A single short email signoff of 3–14 words ending with . ! or ?. No quotes, no recipient name, no markdown, no leading 'I'.")
+    @Guide(description: "A short, witty email signoff ending with exactly one comma. 3 to 8 words. Capitalize only the first word. No internal punctuation. No quotes, no emoji. Just the signoff phrase.")
     public var text: String
 }
 #endif

@@ -35,8 +35,18 @@ if [ ! -f "$ENTITLEMENTS" ]; then
 fi
 
 if [ -z "$IDENTITY" ]; then
-    echo "⚠️  DEVELOPER_ID_APPLICATION unset — skipping codesign (local unsigned build)."
-    echo "   Ship path needs a Developer ID Application cert in the keychain."
+    # No Developer ID cert: re-sign ad-hoc with `codesign --force --deep`.
+    # This is REQUIRED, not optional — build.sh copies SPM resource bundles and
+    # patches Info.plist AFTER the linker's original signature, which invalidates
+    # it. macOS refuses to honor TCC grants (Input Monitoring / Accessibility)
+    # for an invalidly-signed bundle: CGEvent.tapCreate returns nil even when
+    # System Settings shows the toggle on. A valid ad-hoc signature restores that.
+    echo "🔐 No Developer ID — re-signing ad-hoc (valid signature for TCC grants)."
+    codesign --force --deep --sign - "$APP_PATH"
+    codesign --verify --deep --strict --verbose=2 "$APP_PATH"
+    echo "✅ Ad-hoc signed (valid): $APP_PATH"
+    echo "   Note: an ad-hoc signature is unique per build, so re-grant Input"
+    echo "   Monitoring once after installing a freshly built copy."
     exit 0
 fi
 

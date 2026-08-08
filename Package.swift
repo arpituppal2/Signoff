@@ -22,6 +22,7 @@ let package = Package(
             exclude: ["Resources"],
             resources: [
                 .process("Resources/Prompts"),
+                .process("Resources/Corpus"),
             ],
             swiftSettings: [
                 .enableUpcomingFeature("StrictConcurrency"),
@@ -55,6 +56,9 @@ let package = Package(
             name: "SignoffCoreTests",
             dependencies: ["SignoffCore"],
             path: "Tests/SignoffCoreTests",
+            resources: [
+                .process("Resources/Prompts"),
+            ],
             swiftSettings: [
                 .enableUpcomingFeature("StrictConcurrency"),
             ]

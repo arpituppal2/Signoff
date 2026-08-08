@@ -24,16 +24,17 @@ public extension View {
 }
 
 /// The signature preview card shown after a successful generation.
-/// A drafted signoff on paper — monospace signature type, a small amber
-/// underline finishing the phrase, and an honest provider badge.
+/// A drafted signoff on paper — monospace signature type. A small inline copy
+/// icon sits in the corner: tap it to recopy the signoff; it morphs into a
+/// checkmark with a spring, then morphs back.
 public struct SignatureCardView: View {
     public let text: String
-    public var providerKind: GenerationProviderKind?
     @Environment(\.colorScheme) private var scheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var copied = false
 
-    public init(text: String, providerKind: GenerationProviderKind? = nil) {
+    public init(text: String) {
         self.text = text
-        self.providerKind = providerKind
     }
 
     public var body: some View {
@@ -45,26 +46,6 @@ public struct SignatureCardView: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
-
-            // Amber underline — the signature flourish.
-            LinearGradient(
-                colors: [Brand.ember(for: scheme).opacity(0.85), Brand.ember(for: scheme).opacity(0)],
-                startPoint: .leading, endPoint: .trailing
-            )
-            .frame(height: 2)
-            .clipShape(Capsule())
-
-            if let providerKind {
-                HStack(spacing: 5) {
-                    Image(systemName: providerKind.badgeSystemImage)
-                    Text(providerKind.badgeTitle)
-                }
-                .font(.caption2.weight(.medium))
-                .foregroundStyle(providerKind == .foundationModels
-                                 ? Brand.ember(for: scheme)
-                                 : Brand.Ink.secondary(for: scheme))
-                .accessibilityLabel("Provider: \(providerKind.badgeTitle)")
-            }
         }
         .padding(Brand.Layout.spacingM)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -76,14 +57,49 @@ public struct SignatureCardView: View {
             RoundedRectangle(cornerRadius: Brand.Layout.radiusM, style: .continuous)
                 .stroke(Brand.Surface.divider(for: scheme), lineWidth: Brand.Layout.hairline)
         )
+        .overlay(alignment: .topTrailing) {
+            Button {
+                copySignoff()
+            } label: {
+                Image(systemName: copied ? "checkmark" : "doc.on.doc")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(copied ? Brand.ember(for: scheme) : Brand.Ink.tertiary(for: scheme))
+                    .frame(width: 24, height: 24)
+                    .contentTransition(.symbolEffect(.replace))
+                    .scaleEffect(copied ? 1.15 : 1.0)
+                    .animation(
+                        Brand.Motion.safe(.spring(response: 0.32, dampingFraction: 0.6), reduceMotion: reduceMotion),
+                        value: copied
+                    )
+            }
+            .buttonStyle(.borderless)
+            .padding(Brand.Layout.spacingXS)
+            .help(copied ? "Copied" : "Copy signoff")
+            .accessibilityLabel(copied ? "Copied" : "Copy signoff")
+        }
         .accessibilityLabel(accessibilitySummary)
     }
 
     private var accessibilitySummary: String {
-        if let providerKind {
-            return "Generated signoff via \(providerKind.badgeTitle): \(text)"
+        "Generated signoff: \(text)"
+    }
+
+    private func copySignoff() {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+        NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .now)
+        Task { @MainActor in
+            await SystemSoundClient.shared.play(.tink)
         }
-        return "Generated signoff: \(text)"
+        withAnimation(Brand.Motion.safe(.easeOut(duration: 0.2), reduceMotion: reduceMotion)) {
+            copied = true
+        }
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 1_200_000_000)
+            withAnimation(Brand.Motion.safe(.easeOut(duration: 0.2), reduceMotion: reduceMotion)) {
+                copied = false
+            }
+        }
     }
 }
 
@@ -98,465 +114,5 @@ public struct PrivacyBadge: View {
             .labelStyle(.titleAndIcon)
             .foregroundStyle(Brand.ember(for: scheme))
             .accessibilityLabel("100 percent private. All generation stays on your Mac.")
-    }
-}
-
-/// Detailed VoiceProfile viewer for Settings → Privacy → "What I've Learned"
-/// Shows the user's learned voice patterns with transparency and control.
-public struct VoiceProfileDetailView: View {
-    @Binding var display: VoiceProfileDisplay?
-    @Environment(\.dismiss) private var dismiss
-    @Environment(\.colorScheme) private var scheme
-    @State private var showRawJSON = false
-
-    public var body: some View {
-        NavigationStack {
-            Form {
-                Section("Voice Profile Summary") {
-                    if let display {
-                        VStack(alignment: .leading, spacing: 12) {
-                            // Formality bar
-                            VStack(alignment: .leading, spacing: 4) {
-                                HStack {
-                                    Text("Formality")
-                                        .font(.caption.weight(.semibold))
-                                        .foregroundStyle(.secondary)
-                                    Spacer()
-                                    Text("\(display.formalityPercent)%")
-                                        .font(.caption.monospacedDigit().weight(.medium))
-                                }
-                                ProgressView(value: Double(display.formalityPercent) / 100)
-                                    .tint(Brand.ember(for: scheme))
-                                Text(formalityLabel(display.formalityPercent))
-                                    .font(.caption2)
-                                    .foregroundStyle(.tertiary)
-                            }
-
-                            Divider()
-
-                            // Sentence length
-                            HStack {
-                                Text("Avg. sentence length")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                Spacer()
-                                Text(String(format: "%.1f words", display.avgSentenceLength))
-                                    .font(.callout.monospacedDigit().weight(.medium))
-                            }
-
-                            Divider()
-
-                            // Punctuation style
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text("Punctuation style")
-                                    .font(.caption.weight(.semibold))
-                                    .foregroundStyle(.secondary)
-                                HStack(spacing: 12) {
-                                    PunctuationStat(label: ".", value: display.punctuationStyle.periodPercent)
-                                    PunctuationStat(label: "!", value: display.punctuationStyle.exclamationPercent)
-                                    PunctuationStat(label: "?", value: display.punctuationStyle.questionPercent)
-                                }
-                            }
-
-                            Divider()
-
-                            // Emoji frequency
-                            HStack {
-                                Text("Emoji usage")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                Spacer()
-                                Text("\(display.emojiPercent)%")
-                                    .font(.callout.monospacedDigit().weight(.medium))
-                            }
-
-                            Divider()
-
-                            // Adopted closers
-                            if !display.adoptedClosers.isEmpty {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text("Signoffs you use")
-                                        .font(.caption.weight(.semibold))
-                                        .foregroundStyle(.secondary)
-                                    FlowLayout(spacing: 6) {
-                                        ForEach(display.adoptedClosers, id: \.self) { closer in
-                                            Text(closer)
-                                                .font(.caption)
-                                                .padding(.horizontal, 8)
-                                                .padding(.vertical, 3)
-                                                .background(
-                                                    Capsule()
-                                                        .fill(Brand.ember(for: scheme).opacity(0.15))
-                                                )
-                                                .foregroundStyle(Brand.ember(for: scheme))
-                                        }
-                                    }
-                                }
-                            }
-
-                            // Rejected closers
-                            if !display.rejectedClosers.isEmpty {
-                                Divider()
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text("Signoffs you avoid (deleted/replaced)")
-                                        .font(.caption.weight(.semibold))
-                                        .foregroundStyle(.secondary)
-                                    FlowLayout(spacing: 6) {
-                                        ForEach(display.rejectedClosers, id: \.self) { closer in
-                                            Text(closer)
-                                                .font(.caption)
-                                                .padding(.horizontal, 8)
-                                                .padding(.vertical, 3)
-                                                .background(
-                                                    Capsule()
-                                                        .fill(Color.red.opacity(0.15))
-                                                )
-                                                .foregroundStyle(.red)
-                                        }
-                                    }
-                                }
-                            }
-
-                            Divider()
-
-                            // Observation stats
-                            HStack(spacing: 16) {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text("Quality observations")
-                                        .font(.caption2)
-                                        .foregroundStyle(.tertiary)
-                                    Text("\(display.qualityObservations)")
-                                        .font(.title3.monospacedDigit().weight(.semibold))
-                                }
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text("Noise observations")
-                                        .font(.caption2)
-                                        .foregroundStyle(.tertiary)
-                                    Text("\(display.noiseObservations)")
-                                        .font(.title3.monospacedDigit().weight(.semibold))
-                                        .foregroundStyle(.red)
-                                }
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text("Apps observed")
-                                        .font(.caption2)
-                                        .foregroundStyle(.tertiary)
-                                    Text("\(display.observedApps.count)")
-                                        .font(.title3.monospacedDigit().weight(.semibold))
-                                }
-                            }
-
-                            Divider()
-
-                            // Last updated
-                            HStack {
-                                Text("Last updated")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                Spacer()
-                                HStack(spacing: 0) {
-                                Text(display.lastUpdated, style: .relative)
-                                    .font(.caption.monospacedDigit())
-                                Text(" ago")
-                                    .font(.caption)
-                            }
-                            .foregroundStyle(.secondary)
-                            }
-                        }
-                        .padding(.vertical, 8)
-                    }
-                }
-
-                Section {
-                    Button("View Raw Profile JSON") {
-                        showRawJSON = true
-                    }
-                    .foregroundStyle(.blue)
-
-                    Divider()
-
-                    Button {
-                        // Reset voice profile action
-                        SilentLearningEngine.shared.reset()
-                        display = VoiceProfile.shared.displaySummary
-                    } label: {
-                        Label("Reset My Voice", systemImage: "arrow.counterclockwise")
-                            .foregroundStyle(.red)
-                    }
-                    .buttonStyle(.borderless)
-                } footer: {
-                    Text("Resetting clears all learned patterns — formalities, rhythms, signoff preferences, and vocabulary. Signoff will start fresh next time you write.")
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .formStyle(.grouped)
-            .navigationTitle("What I've Learned")
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Done") { dismiss() }
-                }
-            }
-            .sheet(isPresented: $showRawJSON) {
-                RawProfileJSONView(profile: VoiceProfile.shared)
-            }
-        }
-    }
-
-    private func formalityLabel(_ percent: Int) -> String {
-        if percent >= 70 { return "Formal / Professional register" }
-        if percent >= 40 { return "Balanced register" }
-        return "Casual / Conversational register"
-    }
-}
-
-private struct PunctuationStat: View {
-    let label: String
-    let value: Double
-    @Environment(\.colorScheme) private var scheme
-
-    var body: some View {
-        VStack(spacing: 2) {
-            Text(label)
-                .font(.caption2.weight(.semibold))
-                .foregroundStyle(.secondary)
-            Text("\(Int(value))%")
-                .font(.caption.monospacedDigit().weight(.medium))
-        }
-    }
-}
-
-/// Simple flow layout for wrapping chips
-struct FlowLayout: Layout {
-    let spacing: CGFloat
-
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        let sizes = subviews.map { $0.sizeThatFits(.unspecified) }
-        var row = 0
-        var x: CGFloat = 0
-        var maxWidth: CGFloat = 0
-        var rowHeight: CGFloat = 0
-
-        for size in sizes {
-            if x + size.width > (proposal.width ?? 400) && x > 0 {
-                maxWidth = max(maxWidth, x)
-                x = 0
-                row += 1
-                rowHeight = 0
-            }
-            rowHeight = max(rowHeight, size.height)
-            x += size.width + spacing
-        }
-        maxWidth = max(maxWidth, x)
-        return CGSize(width: maxWidth, height: CGFloat(row + 1) * rowHeight + CGFloat(max(0, row)) * spacing)
-    }
-
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        var x: CGFloat = bounds.minX
-        var y: CGFloat = bounds.minY
-        var rowHeight: CGFloat = 0
-
-        for subview in subviews {
-            let size = subview.sizeThatFits(.unspecified)
-            if x + size.width > bounds.maxX && x > bounds.minX {
-                x = bounds.minX
-                y += rowHeight + spacing
-                rowHeight = 0
-            }
-            subview.place(at: CGPoint(x: x, y: y), proposal: .unspecified)
-            x += size.width + spacing
-            rowHeight = max(rowHeight, size.height)
-        }
-    }
-}
-
-/// Raw JSON viewer for the VoiceProfile
-struct RawProfileJSONView: View {
-    let profile: VoiceProfile
-    @Environment(\.dismiss) private var dismiss
-    @Environment(\.colorScheme) private var scheme
-
-    var body: some View {
-        NavigationStack {
-            ScrollView {
-                if let data = try? JSONEncoder().encode(profile.displaySummary),
-                   let json = try? JSONSerialization.jsonObject(with: data),
-                   let pretty = try? JSONSerialization.data(withJSONObject: json, options: [.prettyPrinted, .sortedKeys]),
-                   let string = String(data: pretty, encoding: .utf8) {
-                    Text(string)
-                        .font(.system(.caption, design: .monospaced))
-                        .textSelection(.enabled)
-                        .padding()
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(
-                            RoundedRectangle(cornerRadius: 8)
-                                .fill(Color(nsColor: .textBackgroundColor))
-                        )
-                        .padding()
-                } else {
-                    Text("Unable to serialize profile")
-                        .foregroundStyle(.secondary)
-                        .padding()
-                }
-            }
-            .navigationTitle("Raw VoiceProfile JSON")
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Done") { dismiss() }
-                }
-                ToolbarItem(placement: .primaryAction) {
-                    Button {
-                        if let data = try? JSONEncoder().encode(profile.displaySummary),
-                           let json = try? JSONSerialization.jsonObject(with: data),
-                           let pretty = try? JSONSerialization.data(withJSONObject: json, options: [.prettyPrinted, .sortedKeys]),
-                           let string = String(data: pretty, encoding: .utf8) {
-                            NSPasteboard.general.clearContents()
-                            NSPasteboard.general.setString(string, forType: .string)
-                        }
-                    } label: {
-                        Label("Copy JSON", systemImage: "doc.on.doc")
-                    }
-                }
-            }
-        }
-        .frame(minWidth: Brand.Layout.maxContentWidth, minHeight: Brand.Layout.spacing2XL * 9)
-    }
-}
-
-/// Compact VoiceProfile summary for Settings → Privacy → "What I've Learned"
-public struct VoiceProfileSummaryView: View {
-    let display: VoiceProfileDisplay
-    @Environment(\.colorScheme) private var scheme
-
-    public var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            // Formality bar
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 8) {
-                    Text("Formality")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 80, alignment: .leading)
-                    ProgressView(value: Double(display.formalityPercent) / 100)
-                        .tint(Brand.ember(for: scheme))
-                    Text("\(display.formalityPercent)%")
-                        .font(.caption.monospacedDigit().weight(.medium))
-                        .frame(width: 40, alignment: .trailing)
-                    Text(formalityLabel(display.formalityPercent))
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                }
-            }
-
-            Divider().padding(.vertical, 4)
-
-            // Stats grid
-            HStack(spacing: 16) {
-                StatChip(label: "Avg. sentence", value: String(format: "%.1f", display.avgSentenceLength), unit: "words")
-                StatChip(label: "Emoji", value: "\(display.emojiPercent)%")
-                StatChip(label: "Quality obs.", value: "\(display.qualityObservations)")
-                StatChip(label: "Noise obs.", value: "\(display.noiseObservations)", valueColor: .red)
-            }
-
-            Divider().padding(.vertical, 4)
-
-            // Punctuation style
-            HStack(spacing: 12) {
-                Text("Punctuation")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 80, alignment: .leading)
-                HStack(spacing: 8) {
-                    Text(". \(Int(display.punctuationStyle.periodPercent))%")
-                    Text("! \(Int(display.punctuationStyle.exclamationPercent))%")
-                    Text("? \(Int(display.punctuationStyle.questionPercent))%")
-                }
-                .font(.caption.monospacedDigit().weight(.medium))
-                Spacer()
-            }
-
-            // Adopted closers
-            if !display.adoptedClosers.isEmpty {
-                Divider().padding(.vertical, 4)
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Signoffs you use")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                    FlowLayout(spacing: 4) {
-                        ForEach(display.adoptedClosers.suffix(5), id: \.self) { closer in
-                            Text(closer)
-                                .font(.caption)
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 2)
-                                .background(
-                                    Capsule()
-                                        .fill(Brand.ember(for: scheme).opacity(0.15))
-                                )
-                                .foregroundStyle(Brand.ember(for: scheme))
-                        }
-                    }
-                }
-            }
-
-            // Rejected closers
-            if !display.rejectedClosers.isEmpty {
-                Divider().padding(.vertical, 4)
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Signoffs you avoid")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                    FlowLayout(spacing: 4) {
-                        ForEach(display.rejectedClosers.suffix(3), id: \.self) { closer in
-                            Text(closer)
-                                .font(.caption)
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 2)
-                                .background(
-                                    Capsule()
-                                        .fill(Color.red.opacity(0.15))
-                                )
-                                .foregroundStyle(.red)
-                        }
-                    }
-                }
-            }
-        }
-        .padding(.vertical, 4)
-    }
-
-    private func formalityLabel(_ percent: Int) -> String {
-        if percent >= 70 { return "Formal / Professional" }
-        if percent >= 40 { return "Balanced" }
-        return "Casual / Conversational"
-    }
-}
-
-private struct StatChip: View {
-    let label: String
-    let value: String
-    var unit: String = ""
-    var valueColor: Color = .primary
-    @Environment(\.colorScheme) private var scheme
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 1) {
-            Text(label)
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
-            HStack(spacing: 2) {
-                Text(value)
-                    .font(.callout.monospacedDigit().weight(.semibold))
-                    .foregroundStyle(valueColor)
-                if !unit.isEmpty {
-                    Text(unit)
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                }
-            }
-        }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-        .background(
-            RoundedRectangle(cornerRadius: 6)
-                .fill(Color.primary.opacity(0.04))
-        )
     }
 }

@@ -1,21 +1,23 @@
 import SwiftUI
 import SignoffCore
 
-/// Signoff Design System — "Ink on Paper"
+/// Signoff Design System — "Monochrome + Whisper"
 ///
-/// A signature is personal. It's ink meeting paper. Warmth meeting structure.
-/// This system builds on that metaphor: parchment surfaces, ink typography,
-/// a single amber ember for action, and per-bucket tonal accents that feel
-/// like ink shades — not UI colors.
+/// A signature is personal. This system keeps the focus on content:
+/// monochrome surfaces (cool-warm gray) with a single neutral accent and
+/// per-bucket tonal tints that are applied sparingly — a 3-8% coloured
+/// veil over translucent material, not an opaque paint coat.
 ///
-/// Motion: spring-first, staggered, purposeful. Every transition has weight.
-/// Materials: layered translucency with intent — not decoration.
+/// Motion: spring-first, purposeful. Every transition has weight.
+/// Materials: frosted glass hierarchy (regular > thin > ultraThin) with
+/// calibrated bucket tints, so surfaces read as transparent but never colorless.
+/// Everything is SF Symbol + text — no custom paths, no gradients.
 public enum Brand {
 
-    // MARK: - Brand Accent (The Ember)
+    // MARK: - Brand Accent (Neutral)
 
-    /// The one brand action color — warm amber ember. Used for primary actions,
-    /// the signature mark, active states. Never decorative.
+    /// The one brand action accent — a restrained blue-gray. Used for primary
+    /// buttons, selected state, the signature glyph. Never decorative.
     public static let ember = Palette.ember
     public static let emberBright = Palette.emberBright
     public static let emberDim = Palette.emberDim
@@ -37,12 +39,13 @@ public enum Brand {
         public static let spacingXL  = unit * 8   // 32
         public static let spacing2XL = unit * 12  // 48
 
-        /// Corner radius scale — continuous for optical correctness
+        /// Corner radius scale — continuous for optical correctness. Tightened
+        /// to match macOS 26's flatter grouped-control radii; 14pt was a tell.
         public static let radiusXS   = unit * 1.5  // 6
-        public static let radiusS    = unit * 2.5  // 10
-        public static let radiusM    = unit * 3.5  // 14
-        public static let radiusL    = unit * 5    // 20
-        public static let radiusXL   = unit * 7    // 28
+        public static let radiusS    = unit * 2    // 8
+        public static let radiusM    = unit * 2.5  // 10
+        public static let radiusL    = unit * 3.5  // 14
+        public static let radiusXL   = unit * 5    // 20
         public static let radiusPill = 999.0
 
         /// Hairline — 0.5pt @1x, 0.75pt @2x (retina-aware)
@@ -53,114 +56,145 @@ public enum Brand {
         public static let maxContentWidth: CGFloat = 560
     }
 
-    // MARK: - Motion Choreography
+    // MARK: - Motion Choreography (Fluid Interface)
 
     public enum Motion {
-        /// Primary spring — UI responds with weight.
-        /// Gated by Reduce Motion: resolves to nil when accessibilityReduceMotion is active.
-        public static let springPrimary   = Animation.spring(response: 0.45, dampingFraction: 0.82, blendDuration: 0)
-        /// Quick spring — micro interactions.
-        public static let springQuick     = Animation.spring(response: 0.28, dampingFraction: 0.88, blendDuration: 0)
-        /// Gentle spring — content entrance.
-        public static let springGentle    = Animation.spring(response: 0.55, dampingFraction: 0.85, blendDuration: 0)
-        /// Expressive spring — celebratory moments.
-        public static let springExpressive = Animation.spring(response: 0.5, dampingFraction: 0.7, blendDuration: 0)
+        // MARK: Fluid Springs (Apple WWDC 2018 Designing Fluid Interfaces)
+        // Damping: 1.0 = critically damped (no overshoot, dismissive/closing)
+        // Damping: 0.8 = slightly underdamped (expressive, entrance/expansion)
+        // Response: keeps "weight" consistent; blendDuration: 0 for instant handoff
 
-        /// Ease for fades / cross-fades
-        public static let easeOut    = Animation.easeOut(duration: 0.2)
-        public static let easeInOut  = Animation.easeInOut(duration: 0.3)
-        public static let easeSlow   = Animation.easeOut(duration: 0.5)
+        /// Critically damped — for dismiss, close, collapse. No bounce, immediate settle.
+        public static let springDismiss = Animation.spring(response: 0.35, dampingFraction: 1.0, blendDuration: 0)
+        /// Slightly underdamped — for expand, reveal, generate. Gentle overshoot feels alive.
+        public static let springReveal  = Animation.spring(response: 0.42, dampingFraction: 0.8, blendDuration: 0)
+        /// Interactive spring — for drag, swipe, user-driven. Velocity handoff enabled.
+        public static let springInteractive = Animation.interactiveSpring(response: 0.38, dampingFraction: 0.82, blendDuration: 0)
+        /// Quick micro-interaction — hover, press, focus.
+        public static let springMicro   = Animation.spring(response: 0.22, dampingFraction: 0.9, blendDuration: 0)
+        /// Content entrance — staggered list items.
+        public static let springEntrance = Animation.spring(response: 0.5, dampingFraction: 0.85, blendDuration: 0)
+        /// Celebratory — success, copy confirmation.
+        public static let springCelebrate = Animation.spring(response: 0.45, dampingFraction: 0.7, blendDuration: 0)
+
+        /// Ease for fades / cross-fades (non-spring)
+        public static let easeOut    = Animation.easeOut(duration: 0.18)
+        public static let easeInOut  = Animation.easeInOut(duration: 0.25)
+        public static let easeSlow   = Animation.easeOut(duration: 0.45)
 
         /// Stagger delay between sibling elements
-        public static let staggerDelay: Double = 0.06
+        public static let staggerDelay: Double = 0.05
 
         /// Shimmer sweep duration
         public static let shimmerDuration: Double = 1.4
 
-        /// Returns a motion-safe animation for a spring. When Reduce Motion is
-        /// enabled, replaces springs and x/y/z translations with a simple fade
-        /// to avoid triggering vestibular discomfort (per HIG Accessibility).
+        /// Returns a motion-safe animation. When Reduce Motion is enabled,
+        /// replaces springs and spatial translations with a simple fade.
         public static func safe(
             _ animation: Animation,
             reduceMotion: Bool
         ) -> Animation {
             if reduceMotion {
-                return .easeOut(duration: 0.2)
+                return .easeOut(duration: 0.18)
             }
             return animation
         }
+
+        /// Returns the spring for a given intent. Encodes the fluid vocabulary.
+        public static func spring(for intent: SpringIntent, reduceMotion: Bool) -> Animation {
+            let spring: Animation
+            switch intent {
+            case .dismiss, .close, .collapse:
+                spring = springDismiss
+            case .reveal, .expand, .generate:
+                spring = springReveal
+            case .interactiveDrag, .interactiveSwipe:
+                spring = springInteractive
+            case .micro, .hover, .press, .focus:
+                spring = springMicro
+            case .entrance, .staggeredEntrance:
+                spring = springEntrance
+            case .celebrate, .success:
+                spring = springCelebrate
+            }
+            return safe(spring, reduceMotion: reduceMotion)
+        }
+
+        /// High-level intent for choosing the right spring.
+        public enum SpringIntent {
+            case dismiss, close, collapse
+            case reveal, expand, generate
+            case interactiveDrag, interactiveSwipe
+            case micro, hover, press, focus
+            case entrance, staggeredEntrance
+            case celebrate, success
+        }
     }
 
-    // MARK: - Surfaces (Paper System)
+    // MARK: - Surfaces (Monochrome Grayscale)
 
-    /// Layered paper metaphor. Base → Elevated → Overlay → Floating.
-    /// Each layer adds depth through material + subtle tint + shadow.
+    /// Monochrome gray range. Page = near-white (light) / near-black (dark).
+    /// Cards sit slightly lighter. No warm/brown tint — the per-bucket accent
+    /// enters only through the ultraThin material overlay in the popover body.
     public enum Surface {
-        /// The base "page" — warm parchment (light) / deep ink (dark)
         public static func page(for scheme: ColorScheme) -> Color {
-            scheme == .dark ? ink.page : parchment.page
+            scheme == .dark ? grayDark.page : grayLight.page
         }
 
-        /// A card resting on the page
         public static func card(for scheme: ColorScheme) -> Color {
-            scheme == .dark ? ink.card : parchment.card
+            scheme == .dark ? grayDark.card : grayLight.card
         }
 
-        /// Raised surface (popover, tooltip)
         public static func raised(for scheme: ColorScheme) -> Color {
-            scheme == .dark ? ink.raised : parchment.raised
+            scheme == .dark ? grayDark.raised : grayLight.raised
         }
 
-        /// Floating (toast, peak)
         public static func floating(for scheme: ColorScheme) -> Color {
-            scheme == .dark ? ink.floating : parchment.floating
+            scheme == .dark ? grayDark.floating : grayLight.floating
         }
 
-        /// Subtle tint wash for branded cards
-        public static func tint(for scheme: ColorScheme, opacity: Double = 0.08) -> Color {
+        public static func tint(for scheme: ColorScheme, opacity: Double = 0.06) -> Color {
             ember(for: scheme).opacity(opacity)
         }
 
-        /// Divider / hairline
         public static func divider(for scheme: ColorScheme) -> Color {
-            scheme == .dark ? ink.divider : parchment.divider
+            scheme == .dark ? grayDark.divider : grayLight.divider
         }
 
-        // Light palette (parchment)
-        private enum parchment {
-            static let page     = Color(red: 0.978, green: 0.969, blue: 0.952)  // #F9F7F3
-            static let card     = Color(red: 0.996, green: 0.992, blue: 0.980)  // #FEFDF9 — +4% luminance over page
-            static let raised   = Color(red: 1.000, green: 0.996, blue: 0.988)  // #FFFEFD — +3% over card
-            static let floating = Color(red: 1.000, green: 0.998, blue: 0.992)  // #FFFEFD
-            static let divider  = Color(red: 0.820, green: 0.790, blue: 0.740).opacity(0.12)  // Min 0.12 for AA
+        // Light palette — cool-neutral grays
+        private enum grayLight {
+            static let page     = Color(red: 0.969, green: 0.965, blue: 0.961)  // #F7F6F5
+            static let card     = Color(red: 0.988, green: 0.986, blue: 0.983)  // #FCFBFB
+            static let raised   = Color(red: 0.996, green: 0.994, blue: 0.992)
+            static let floating = Color(red: 0.998, green: 0.997, blue: 0.996)
+            static let divider  = Color(red: 0.760, green: 0.755, blue: 0.745).opacity(0.12)
         }
 
-        // Dark palette (ink)
-        private enum ink {
-            static let page     = Color(red: 0.090, green: 0.084, blue: 0.075)  // #171613
-            static let card     = Color(red: 0.138, green: 0.130, blue: 0.118)  // #23211E — +4% luminance over page
-            static let raised   = Color(red: 0.158, green: 0.148, blue: 0.134)  // #282522 — +3% over card
-            static let floating = Color(red: 0.175, green: 0.164, blue: 0.148)  // #2D2A25
-            static let divider  = Color(red: 0.300, green: 0.275, blue: 0.240).opacity(0.16)  // Min 0.16 for AA
+        // Dark palette — deep cool-dark
+        private enum grayDark {
+            static let page     = Color(red: 0.098, green: 0.100, blue: 0.102)  // #191A1A
+            static let card     = Color(red: 0.140, green: 0.142, blue: 0.145)
+            static let raised   = Color(red: 0.160, green: 0.163, blue: 0.167)
+            static let floating = Color(red: 0.178, green: 0.181, blue: 0.185)
+            static let divider  = Color(red: 0.330, green: 0.335, blue: 0.340).opacity(0.16)
         }
     }
 
-    // MARK: - Ink Typography (Text System)
+    // MARK: - Text Neutrals
 
-    /// Text colors derived from ink on paper. Never pure black/white.
-    /// Rebased to meet WCAG AA: body text 4.5:1, large text (18pt+) 3:1
+    /// Neutral gray text ramp — meets WCAG AA.
     public enum Ink {
         public static func primary(for scheme: ColorScheme) -> Color {
-            scheme == .dark ? Color(red: 0.945, green: 0.925, blue: 0.890)  // #F1ECE3 — ~11:1 on dark
-                            : Color(red: 0.145, green: 0.132, blue: 0.114)    // #25211D — ~12:1 on light
+            scheme == .dark  ? Color(red: 0.945, green: 0.943, blue: 0.940)
+                             : Color(red: 0.125, green: 0.128, blue: 0.132)
         }
         public static func secondary(for scheme: ColorScheme) -> Color {
-            scheme == .dark ? Color(red: 0.835, green: 0.795, blue: 0.730)    // #D5CBBB — ~5.2:1 on dark page
-                            : Color(red: 0.240, green: 0.215, blue: 0.172)    // #3D372C — ~5.5:1 on light page
+            scheme == .dark  ? Color(red: 0.835, green: 0.830, blue: 0.822)
+                             : Color(red: 0.245, green: 0.248, blue: 0.255)
         }
         public static func tertiary(for scheme: ColorScheme) -> Color {
-            scheme == .dark ? Color(red: 0.720, green: 0.685, blue: 0.630)    // #B8AE9F — ~4.5:1 on dark page
-                            : Color(red: 0.350, green: 0.315, blue: 0.270)    // #595045 — ~4.5:1 on light page
+            scheme == .dark  ? Color(red: 0.720, green: 0.717, blue: 0.708)
+                             : Color(red: 0.370, green: 0.374, blue: 0.382)
         }
         public static func disabled(for scheme: ColorScheme) -> Color {
             scheme == .dark ? Color.white.opacity(0.38) : Color.black.opacity(0.38)
@@ -213,12 +247,14 @@ public enum Brand {
         }
     }
 
-    // MARK: - Typography Scale
+    // MARK: - Typography Scale (Fluid: optical sizing, tracking, leading)
 
     /// Consistent type scale across the app using system fonts with Dynamic Type support.
     /// Serif reserved for extended reading (signoff output).
+    /// Uses optical sizing (.default) for system fonts — automatically adjusts tracking/leading
+    /// at display vs body sizes. Explicit tracking added where brand voice needs it.
     public enum Typography {
-        /// Large display text (onboarding headlines)
+        /// Large display text (onboarding headlines) — slight negative tracking for weight
         public static let display = Font.system(.title, design: .rounded).weight(.semibold)
         /// Section headlines
         public static let headline = Font.system(.headline, design: .rounded).weight(.semibold)
@@ -232,10 +268,32 @@ public enum Brand {
         public static let caption1 = Font.system(.caption)
         /// Caption 2
         public static let caption2 = Font.system(.caption2)
-        /// Signoff output — serif for extended reading
+        /// Signoff output — serif for extended reading, slight extra leading for breath
         public static let signoff = Font.system(.body, design: .serif).weight(.regular)
         /// Monospace for codes/shortcuts
         public static let mono = Font.system(.footnote, design: .monospaced)
+
+        /// Tracking values for specific contexts (applied via .tracking())
+        public enum Tracking {
+            /// Display/headline: slightly tight for presence
+            public static let headline: CGFloat = -0.3
+            /// Signoff text: slightly open for readability at serif sizes
+            public static let signoff: CGFloat = 0.15
+            /// UI labels: standard
+            public static let ui: CGFloat = 0
+            /// Monospace: standard
+            public static let mono: CGFloat = 0
+        }
+
+        /// Line spacing (leading) values (applied via .lineSpacing())
+        public enum Leading {
+            /// Signoff: comfortable reading
+            public static let signoff: CGFloat = 4
+            /// Body: standard
+            public static let body: CGFloat = 2
+            /// Compact: tight for lists
+            public static let compact: CGFloat = 1
+        }
     }
 
     // MARK: - Bucket Tonal Accents (Ink Shades)
@@ -248,7 +306,6 @@ public enum Brand {
         case .standard:     return scheme == .dark ? standardDark  : standardLight   // Dependable ink
         case .professional: return scheme == .dark ? profDark     : profLight      // Measured indigo
         case .unhinged:     return scheme == .dark ? unhDark      : unhLight       // Chaotic rust
-        case .custom:       return ember(for: scheme)                              // Brand ember
         case .list:         return scheme == .dark ? listDark     : listLight      // Collected sage
         case .footer:       return scheme == .dark ? footerDark   : footerLight    // Formal slate
         case .generalLegacy:return ember(for: scheme)
@@ -269,16 +326,21 @@ public enum Brand {
     // MARK: - Palette (Private Raw Values)
 
     private enum Palette {
-        static let ember       = Color(red: 0.760, green: 0.480, blue: 0.180)  // #C27A2E
-        static let emberBright = Color(red: 0.880, green: 0.600, blue: 0.220)
-        static let emberDim    = Color(red: 0.600, green: 0.380, blue: 0.140)
+        // Neutral blue-gray accent — replaces the amber/brown ember.
+        // Distinguished, restrained, reads well on both colour schemes
+        // while staying out of the way of content.
+        static let ember       = Color(red: 0.380, green: 0.440, blue: 0.520)  // #617085
+        static let emberBright = Color(red: 0.560, green: 0.620, blue: 0.700)
+        static let emberDim    = Color(red: 0.280, green: 0.320, blue: 0.400)
     }
 }
 
 // MARK: - View Extensions (Design System Application)
 
 extension View {
-    /// Apply card surface: material + tint + hairline + shadow
+    /// Apply card surface: brand fill + hairline + shadow. No system material —
+    /// stacking `.regularMaterial` under a brand-tinted overlay produced a muddy
+    /// glass-on-glass read. The brand card color is opaque and deliberate.
     func cardSurface(
         tint: Color? = nil,
         radius: CGFloat = Brand.Layout.radiusM,
@@ -291,11 +353,7 @@ extension View {
             .padding(Brand.Layout.spacingM)
             .background(
                 RoundedRectangle(cornerRadius: radius, style: .continuous)
-                    .fill(.regularMaterial)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: radius, style: .continuous)
-                            .fill((tint ?? surfaceColor).opacity(scheme == .dark ? 0.12 : 0.08))
-                    )
+                    .fill(tint ?? surfaceColor)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: radius, style: .continuous)
@@ -324,7 +382,7 @@ extension View {
     func staggeredEntrance(
         index: Int,
         delay: Double = Brand.Motion.staggerDelay,
-        animation: Animation = Brand.Motion.springGentle,
+        animation: Animation = Brand.Motion.springEntrance,
         reduceMotion: Bool = false
     ) -> some View {
         let safeAnimation = Brand.Motion.safe(animation, reduceMotion: reduceMotion)

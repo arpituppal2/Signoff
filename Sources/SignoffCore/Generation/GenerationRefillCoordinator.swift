@@ -60,6 +60,8 @@ public final class GenerationRefillCoordinator {
                                ageGroup: AgeGroup = .genZ,
                                voiceProfile: PromptComposer.VoiceProfileSnapshot,
                                fillCount: Int = 3) {
+        let log = SignoffLogLogger(.generation)
+        log.info("[RefillCoordinator] refillIfNeeded: bucketId=\(bucketId, privacy: .public), inflight=\(self.inflight.contains(bucketId), privacy: .public), available=\(FoundationModelsAvailability.probe() == .available, privacy: .public)")
         guard !inflight.contains(bucketId) else { return }
         guard #available(macOS 26, *) else { return }
         guard case .available = FoundationModelsAvailability.probe() else { return }
@@ -90,10 +92,14 @@ public final class GenerationRefillCoordinator {
                                           voiceSnapshot: PromptComposer.VoiceProfileSnapshot,
                                           fillCount: Int) async {
         let log = SignoffLogLogger(.generation)
+        log.info("[RefillCoordinator] performRefill: bucketId=\(bucketId, privacy: .public), unhingedLevel=\(config.unhingedLevel?.rawValue ?? "nil", privacy: .public), toneValue=\(config.toneValue?.description ?? "nil", privacy: .public), nsfwEnabled=\(config.nsfwEnabled, privacy: .public)")
+        log.info("[RefillCoordinator] template.system: \(template.system.prefix(80), privacy: .public)")
+        log.info("[RefillCoordinator] template.userVariants count: \(template.userVariants.count, privacy: .public)")
         var generated: [String] = []
         // Grow the avoid-list as we produce phrases so the model varies them.
         var avoid = recentTexts
-        for _ in 0..<max(1, fillCount) {
+        for i in 0..<max(1, fillCount) {
+            log.info("[RefillCoordinator] performRefill: bucketId=\(bucketId, privacy: .public), iteration=\(i, privacy: .public)")
             let composed = PromptComposer.compose(
                 template: template,
                 profile: profile,
@@ -106,18 +112,23 @@ public final class GenerationRefillCoordinator {
                 ageGroup: ageGroup,
                 voiceProfile: voiceSnapshot,
                 nsfwEnabled: config.nsfwEnabled)
+            log.info("[RefillCoordinator] composed.instructions: \(composed.instructions.prefix(100), privacy: .public)")
+            log.info("[RefillCoordinator] composed.prompt: \(composed.prompt.prefix(100), privacy: .public)")
             let context = ProviderGenerateContext(
                 bucketId: bucketId,
                 template: template,
                 composed: composed,
                 unhingedLevel: config.unhingedLevel,
-                toneValue: config.toneValue)
+                toneValue: config.toneValue,
+                guardWords: template.guardWords)
             do {
                 let phrase = try await FoundationModelsProvider().generate(context)
-                generated.append(phrase)
-                avoid.append(phrase)
+                let sanitized = ProviderResponseGuard.sanitizeSignoff(phrase)
+                log.info("[RefillCoordinator] performRefill: bucketId=\(bucketId, privacy: .public), generated phrase=\(sanitized, privacy: .public)")
+                generated.append(sanitized)
+                avoid.append(sanitized)
             } catch {
-                log.info("FMF refill for \(bucketId, privacy: .public) interrupted: \(error.localizedDescription, privacy: .public)")
+                log.info("[RefillCoordinator] FMF refill for \(bucketId, privacy: .public) interrupted: \(error.localizedDescription, privacy: .public)")
                 break
             }
         }
@@ -126,7 +137,7 @@ public final class GenerationRefillCoordinator {
             guard !generated.isEmpty else { return }
             BucketCache.shared.fill(bucketId: bucketId, phrases: generated,
                                     source: .foundationModels)
-            log.info("FMF refill +\(generated.count) for \(bucketId, privacy: .public)")
+            log.info("[RefillCoordinator] FMF refill +\(generated.count, privacy: .public) for \(bucketId, privacy: .public)")
         }
     }
 }

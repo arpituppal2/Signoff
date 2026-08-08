@@ -33,6 +33,7 @@ public final class CarbonEventTap: @unchecked Sendable {
         public static let command = Flag(rawValue: 1 << 3)
         public static let cmdCtrl: Flag = [.command, .control]
         public static let optCmd:  Flag = [.command, .option]
+        public static let ctrlOpt: Flag = [.control, .option]
         public func contains(_ other: CarbonEventTap.Flag) -> Bool {
             (rawValue & other.rawValue) == other.rawValue
         }
@@ -84,18 +85,26 @@ public final class CarbonEventTap: @unchecked Sendable {
             callback: tapCB,
             userInfo: userInfo
         ) else {
-            // Genuine denial: CGEvent.tapCreate returned nil. Surface the
-            // system prompt so the user can grant Input Monitoring, then
-            // report the failure (SignoffDelegate presents the alert).
-            _ = InputMonitoringAccess.request()
+            // Genuine denial: CGEvent.tapCreate returned nil. Request system
+            // permission only once per version — with ad-hoc signing the CDHash
+            // changes each build, so the system dialog would otherwise re-prompt
+            // on every launch even after the user has granted access.
+            let buildVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0"
+            let promptOnceKey = "signoff.inputMonitoringSystemPrompt.\(buildVersion)"
+            if !UserDefaults.standard.bool(forKey: promptOnceKey) {
+                UserDefaults.standard.set(true, forKey: promptOnceKey)
+                _ = InputMonitoringAccess.request()
+            }
             let reason = "CGEvent.tapCreate returned nil (Input Monitoring likely not granted, or system already bound the chord)."
             Self.log.error("\(reason, privacy: .public)")
+            print("[CarbonEventTap] FAILED: \(reason)")
             return .failure(.eventTapDenied(reason: reason))
         }
         self.tap = tapRef
         guard let runLoopSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tapRef, 0) else {
             Self.log.error("CFMachPortCreateRunLoopSource returned nil after successful tap create.")
             self.tap = nil
+            print("[CarbonEventTap] FAILED: runLoopSourceCreateFailed")
             return .failure(.runLoopSourceCreateFailed)
         }
         self.source = runLoopSource
@@ -104,8 +113,11 @@ public final class CarbonEventTap: @unchecked Sendable {
         if !CGEvent.tapIsEnabled(tap: tapRef) {
             Self.log.error("Tap created and source installed, but CGEvent.tapIsEnabled returns false — system has captured the chord.")
             self.stop()
+            print("[CarbonEventTap] FAILED: tapEnableFailed")
             return .failure(.tapEnableFailed)
         }
+        Self.log.info("CarbonEventTap installed successfully")
+        print("[CarbonEventTap] SUCCESS: Tap installed")
         return .success(())
     }
 
@@ -120,6 +132,9 @@ public final class CarbonEventTap: @unchecked Sendable {
     }
 
     private func handle(event: CGEvent?) -> CGEvent? {
+        guard let event = event else { return nil }
+        _ = CarbonEventTap.keyCodeOf(event)
+        _ = CarbonEventTap.modifiersOf(event)
         return handler(event)
     }
 
