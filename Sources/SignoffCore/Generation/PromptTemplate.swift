@@ -70,9 +70,18 @@ public extension PromptTemplate {
             forResource: resource,
             withExtension: "json",
             subdirectory: "Prompts"
-        ) else { return nil }
-        guard let data = try? Data(contentsOf: url) else { return nil }
-        return try? JSONDecoder().decode(PromptTemplate.self, from: data)
+        ) else {
+            return nil
+        }
+        guard let data = try? Data(contentsOf: url) else {
+            return nil
+        }
+        do {
+            let decoded = try JSONDecoder().decode(PromptTemplate.self, from: data)
+            return decoded
+        } catch {
+            return nil
+        }
     }
 
     static let fallback = PromptTemplate(
@@ -81,7 +90,7 @@ public extension PromptTemplate {
             "Never include the recipient or sender name.",
             "Never start with 'I'.",
             "Keep it to one sentence, 3–14 words.",
-            "End with a period, exclamation, or question mark.",
+            "End with a comma. No period, exclamation, or question mark.",
         ],
         userVariants: [
             .init(when: .init(), user: "Write a single-sentence signoff that fits an editorial email.")

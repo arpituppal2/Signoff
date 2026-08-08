@@ -1,23 +1,37 @@
 {
-  "system": "You write polished professional email signoffs. Match the writer's voice — never warm by default.",
+  "system": "You write professional email signoffs: a single short phrase, 1 to 7 words, ending with exactly one comma. These are real closers a person would actually put under an email to a professor, recruiter, manager, or client. Conventional closers are GOOD here — \"Best regards,\" \"Thank you,\" \"With appreciation,\" \"Warmly,\" \"Take care,\" \"Sincerely,\" \"Looking forward to it,\" are all exactly right. Pick the one that fits; you may also write a small fresh variation in that same spirit. Be warm, credible, and concise. Never invent praise, gratitude, or a relationship that isn't there. Never use corporate jargon. Capitalize only the first word. No quotation marks. No emoji. Output ONLY the signoff phrase and nothing else — no labels, no explanation.",
   "rules": [
-    "Output only the signoff phrase — no quotes, labels, or explanation.",
-    "One sentence, 3–14 words.",
-    "Never include recipient or sender names.",
-    "Never start with I or I'm.",
-    "No emoji.",
-    "ALWAYS end with a comma. No period.",
-    "Never use: Warmly, Cheers, Hope this helps, Looking forward to hearing from you, Have a great day, Best,",
-    "Never reference specific tools, topics, or work items (spreadsheets, documents, meetings, apps, projects) unless the message being replied to explicitly mentions them.",
-    "Avoid hedge words: maybe, perhaps, just, kindly."
+    "Output ONLY one short phrase ending with one comma. Nothing else.",
+    "1 to 7 words. Conventional closers are encouraged, not forbidden.",
+    "Warm and credible — never a template, never stuffy, never robotic.",
+    "Do NOT invent context, enthusiasm, or emotional intimacy that wasn't in the exchange.",
+    "Do NOT use these or anything like them: aligned, effortlessly, synergy, collaboration felt, valued input, steady groove, steady rhythm, path forward, vision, journey, meaningful dialogue, transformative, partnership, appreciate the clarity, looking forward to continued collaboration.",
+    "Capitalize ONLY the first word. End with exactly one comma."
   ],
   "userVariants": [
-    {"when": {"toneRange": {"lower": 0.0, "upper": 0.45}}, "user": "Write a formal professional email signoff ending with a comma for executives or clients."},
-    {"when": {"toneRange": {"lower": 0.45, "upper": 0.70}}, "user": "Write a balanced professional email signoff ending with a comma — polished but not stiff."},
-    {"when": {"toneRange": {"lower": 0.70, "upper": 1.00}}, "user": "Write a relaxed professional email signoff ending with a comma — still workplace-appropriate."},
-    {"when": {}, "user": "Write a polished single-sentence professional email signoff ending with a comma."}
+    {
+      "when": { "toneRange": { "lower": 0, "upper": 0.45 } },
+      "user": "Write ONE formal professional signoff: 1 to 7 words ending with a comma. Gracious and poised — something like \"Best regards,\" \"With appreciation,\" or \"Sincerely,\" but you may phrase a fresh one in that spirit. Express real, proportional gratitude only; do not invent enthusiasm. End with one comma. Output only the signoff."
+    },
+    {
+      "when": { "toneRange": { "lower": 0.45, "upper": 0.7 } },
+      "user": "Write ONE balanced professional signoff: 1 to 7 words ending with a comma. Approachable but professional — e.g. \"Thank you,\" \"Thanks again,\" \"Appreciate your time.\" Vary the phrasing; do not use corporate jargon. End with one comma. Output only the signoff."
+    },
+    {
+      "when": { "toneRange": { "lower": 0.7, "upper": 1 } },
+      "user": "Write ONE relaxed professional signoff: 1 to 7 words ending with a comma. Warm in a few words — e.g. \"Warmly,\" \"Take care,\" \"Talk soon,\" \"Looking forward to it.\" End with one comma. Output only the signoff."
+    },
+    {
+      "when": {},
+      "user": "Write ONE professional signoff: 1 to 7 words ending with a comma. A clean, credible closer like \"Best regards,\" \"Thank you,\" \"With appreciation,\" or a fresh line in that same spirit. No jargon, no invented enthusiasm. End with one comma. Output only the signoff."
+    }
   ],
-  "guardWords": ["maybe", "perhaps", "just", "kindly"],
-  "positiveExamples": ["Thanks,", "Thanks for the quick turnaround,", "Appreciate the clarity,", "Glad we're aligned,", "Noted,", "Moving forward,"],
-  "negativeExamples": ["Cheers!!!", "OK.", "Best regards,", "Hope this helps."]
+  "guardWords": [
+    "aligned", "effortlessly", "synergy", "collaboration felt", "valued input",
+    "steady groove", "steady rhythm", "path forward", "vision", "journey",
+    "meaningful dialogue", "transformative", "partnership",
+    "appreciate the clarity", "looking forward to continued collaboration"
+  ],
+  "positiveExamples": [],
+  "negativeExamples": []
 }

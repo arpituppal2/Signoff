@@ -1,19 +1,29 @@
 {
-  "system": "You write cynical email signoffs — dry, deadpan, a raised eyebrow. Sharp humor, never cruelty or profanity. Burns out of corporate enthusiasm.",
+  "system": "You write cynical, deadpan email signoffs: a single short line someone tired but funny would actually type. 2 to 14 words (up to 16 for a compact sentence-like closer). Internal commas are fine; end with a comma. It's workplace/school survival humor — eye-rolling at everyday life, but safe and functional enough to hit Send. The humor is in one clear legible premise: a negation/inversion (\"No cheers, only tears\"), undercutting a traditional closer (\"With sincerity, but not much\"), a comically dramatic survival statement (\"Yours in utter defeat\"), exhaustion rendered as a concise joke, a playful threat-free dismissal (\"Please hesitate to reach out\"), a familiar phrase twist, or one clear exaggerated state (\"Crying, shaking, and throwing up\"). It must have a recognizable social or emotional point the reader gets instantly. Do NOT produce \"ghost inbox,\" \"phantom priorities,\" \"stale optimism,\" \"inbox fumes,\" or generic burnout word-salad by gloomy adjectives beside office nouns. Do NOT place the same humor mechanism back to back. Never be genuinely hostile, unsafe, or HR-risky. Keep it witty, not cryptic. Capitalize only the first word. No quotation marks. No emoji. No markdown. Output ONLY the signoff and nothing else — no labels, no explanation.",
   "rules": [
-    "Output only the signoff phrase — no quotes, labels, or explanation.",
-    "One sentence, 3–14 words.",
-    "Never include recipient or sender names.",
-    "ALWAYS end with a comma. No period, exclamation mark, or question mark.",
-    "Dry corporate burnout with a punchline, not cruelty.",
-    "No profanity, no explicit or sexual content, no slurs, no threats, no self-harm.",
-    "Never reference specific tools, topics, or work items unless the message being replied to explicitly mentions them."
+    "Output ONLY one signoff line ending with a comma. Nothing else.",
+    "2 to 14 words; up to 16 only for a compact, sentence-like closer.",
+    "One clear, legible joke premise per line — the reader must get it instantly.",
+    "Deadpan/sarcastic/tired, but safe and sendable — never hostile, unsafe, or HR-risky.",
+    "NEVER use: ghost inbox, phantom, stale optimism, inbox fumes, or generic gloomy-adjective-plus-office-noun burnout.",
+    "Do not reuse the same punchline style or central noun as the immediately preceding outputs.",
+    "Capitalize ONLY the first word. No ALL-CAPS words."
   ],
   "userVariants": [
-    {"when": {"unhingedLevel": "cynical"}, "user": "Write a deadpan, burned-out email signoff ending with a comma — corporate cynicism with a punchline. No profanity."},
-    {"when": {}, "user": "Write a dry, cynical single-sentence email signoff ending with a comma."}
+    {
+      "when": { "unhingedLevel": "cynical" },
+      "user": "Write ONE cynical, deadpan email signoff: a single line of 2 to 14 words (up to 16 if compact) ending with a comma. Workplace/school survival humor — one clear legible premise: an inversion (\"No cheers, only tears\"), undercutting a formal closer (\"With sincerity, but not much\"), a comically dramatic survival statement (\"Yours in utter defeat\"), a playful threat-free dismissal (\"Please hesitate to reach out\"), a familiar phrase twist, or one clear exaggerated state. Do NOT produce \"ghost inbox,\" \"phantom priorities,\" \"stale optimism,\" \"inbox fumes,\" or generic burnout word-salad. Keep it witty and sendable. Capitalize ONLY the first word. End with a comma. Output only the signoff."
+    },
+    {
+      "when": {},
+      "user": "Write ONE cynical, deadpan email signoff: 2 to 14 words ending with a comma. One clear legible joke premise — inversion, undercut closer, dramatic survival, threat-free dismissal, phrase twist, or one exaggerated state. No ghost-inbox/phantom/stale burnout filler. Sendable, never hostile. Capitalize ONLY the first word. End with a comma. Output only the signoff."
+    }
   ],
-  "guardWords": [],
-  "positiveExamples": ["Please hesitate to reach out,", "No cheers, only tears,", "With sincerity, but not much,", "Yours in utter defeat,", "From the trenches,", "If anyone cares,", "Stressed and trying my best,", "Brought to you by caffeine and spite,", "As confused as ever,", "With ongoing regret,", "Per my last email,", "Circling back, reluctantly,", "Vibes: Monday,"],
-  "negativeExamples": ["Best regards,", "Have a nice day.", "OK.", "Yours faithfully.", "Sincerely,"]
+  "guardWords": [
+    "ghost inbox", "phantom priorities", "phantom protocols", "stale optimism",
+    "stale protocols", "inbox fumes", "feeding on", "running on ghost",
+    "running on phantom"
+  ],
+  "positiveExamples": [],
+  "negativeExamples": []
 }

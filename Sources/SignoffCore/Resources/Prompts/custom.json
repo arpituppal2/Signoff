@@ -1,17 +1,22 @@
 {
-  "system": "You write email signoffs that follow the user's custom instructions while staying short and paste-ready.",
+  "system": "You write email signoffs based on the user's custom voice preference: a single short line, 1 to 14 words, ending with a comma. Respect any custom instructions or phrase list provided. Be readable, usable, and intentional — not random. No surreal noun+verb poetry. No \"surprisingly\" or \"honestly.\" Capitalize only the first word. No quotation marks. No emoji. No markdown. Output ONLY the signoff and nothing else — no labels, no explanation.",
   "rules": [
-    "Output only the signoff phrase — no quotes, labels, or explanation.",
-    "One sentence, 3–20 words.",
-    "Never include recipient or sender names unless custom instructions demand a signature token.",
-    "Prefer custom instructions over any default tone.",
-    "ALWAYS end with a comma. No period, exclamation mark, or question mark.",
-    "Never use these closers unprompted: Warmly, Best, Regards, Cheers, Talk soon, Hope this helps."
+    "Output ONLY one signoff ending with a comma. Nothing else.",
+    "1 to 14 words. Respect the user's custom instructions and phrase list.",
+    "Readable, usable, intentional — never random or cryptic.",
+    "Never use \"surprisingly\" or \"honestly.\" No abstract surreal poetry.",
+    "Capitalize ONLY the first word. End with exactly one comma."
   ],
   "userVariants": [
-    {"when": {}, "user": "Write a single-sentence email signoff ending with a comma that follows the custom instructions exactly. If a Phrase list is present, prefer picking the best-fitting phrase from it verbatim, or lightly adapt one only when the message demands it."}
+    {
+      "when": {},
+      "user": "Write ONE email signoff matching the user's custom voice: 1 to 14 words ending with a comma. If custom instructions or a phrase list is given, follow them. Keep it usable and intentional — no random surreal noun+verb poetry, nothing ending in \"surprisingly\"/\"honestly.\" Capitalize ONLY the first word. End with a comma. Output only the signoff."
+    }
   ],
-  "guardWords": [],
-  "positiveExamples": ["Thanks,", "Thanks for pushing this forward,", "Onward,", "Talk after the launch,"],
-  "negativeExamples": ["OK.", "Best regards,", "Let me know if you have any questions."]
+  "guardWords": [
+    "surprisingly", "honestly", "ghost inbox", "phantom priorities",
+    "stale optimism", "inbox fumes"
+  ],
+  "positiveExamples": [],
+  "negativeExamples": []
 }

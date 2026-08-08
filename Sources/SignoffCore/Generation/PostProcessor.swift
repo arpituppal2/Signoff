@@ -10,6 +10,10 @@ public struct PostProcessor: Sendable {
     /// Ensure the signoff ends with sentence-ending punctuation.
     public static func ensurePunctuation(_ text: String) -> String {
         var t = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        // If already ends with comma (required for signoffs), keep it as-is
+        if t.hasSuffix(",") {
+            return t
+        }
         if !t.isEmpty, !t.hasSuffix("."), !t.hasSuffix("!"), !t.hasSuffix("?") {
             t += "."
         }

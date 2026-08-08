@@ -24,42 +24,17 @@ public enum PromptComposer: Sendable {
         }
     }
 
-    /// Sendable snapshot of voice profile data needed for composition.
-    /// This allows background tasks to compose prompts without capturing
-    /// the non-Sendable VoiceProfile class.
+    /// Empty voice profile snapshot — learning is disabled.
     public struct VoiceProfileSnapshot: Sendable {
-        public let discriminativeFingerprint: [String: Double]
-        public let noiseLexicalFingerprint: [String: Double]
-        public let qualityPromptSummary: String
-        public let adoptedSignoffPatterns: [String]
-        public let rejectedSignoffPatterns: [String]
-        public let learningConsentGranted: Bool
+        public let discriminativeFingerprint: [String: Double] = [:]
+        public let noiseLexicalFingerprint: [String: Double] = [:]
+        public let qualityPromptSummary: String = ""
+        public let adoptedSignoffPatterns: [String] = []
+        public let rejectedSignoffPatterns: [String] = []
+        public let learningConsentGranted: Bool = false
 
-        public init(
-            discriminativeFingerprint: [String: Double],
-            noiseLexicalFingerprint: [String: Double],
-            qualityPromptSummary: String,
-            adoptedSignoffPatterns: [String],
-            rejectedSignoffPatterns: [String],
-            learningConsentGranted: Bool
-        ) {
-            self.discriminativeFingerprint = discriminativeFingerprint
-            self.noiseLexicalFingerprint = noiseLexicalFingerprint
-            self.qualityPromptSummary = qualityPromptSummary
-            self.adoptedSignoffPatterns = adoptedSignoffPatterns
-            self.rejectedSignoffPatterns = rejectedSignoffPatterns
-            self.learningConsentGranted = learningConsentGranted
-        }
-
-        /// Create from a VoiceProfile on the main actor.
-        public init(from voiceProfile: VoiceProfile) {
-            self.discriminativeFingerprint = voiceProfile.discriminativeFingerprint
-            self.noiseLexicalFingerprint = voiceProfile.noiseLexicalFingerprint
-            self.qualityPromptSummary = voiceProfile.qualityPromptSummary
-            self.adoptedSignoffPatterns = voiceProfile.adoptedSignoffPatterns
-            self.rejectedSignoffPatterns = voiceProfile.rejectedSignoffPatterns
-            self.learningConsentGranted = voiceProfile.learningConsentGranted
-        }
+        public init() {}
+        public init(from _: VoiceProfile) {}
     }
 
     public static func compose(
@@ -71,10 +46,11 @@ public enum PromptComposer: Sendable {
         postfixMode: BucketPostfixMode? = nil,
         customInstructions: String? = nil,
         phraseList: String? = nil,
-        contextInstructions: String? = nil,
         ageGroup: AgeGroup? = nil,
         voiceProfile: VoiceProfileSnapshot? = nil,
-        nsfwEnabled: Bool = false
+        nsfwEnabled: Bool = false,
+        attempt: Int = 1,
+        usedMechanisms: [String] = []
     ) -> Composed {
         let instructions = makeInstructions(from: template, ageGroup: ageGroup ?? .genZ, voiceProfile: voiceProfile, nsfwEnabled: nsfwEnabled)
         let userVariant = template.chooseUser(
@@ -86,14 +62,15 @@ public enum PromptComposer: Sendable {
         let promptPrefix = makePromptPrefix(
             userVariant: userVariant,
             positiveExamples: template.positiveExamples,
-            negativeExamples: template.negativeExamples
-        )
+            negativeExamples: template.negativeExamples,
+            guardWords: template.guardWords,
+            attempt: attempt,
+            usedMechanisms: usedMechanisms)
         let variableTail = makeVariableTail(
             profile: profile,
             recentTexts: recentTexts,
             customInstructions: customInstructions,
             phraseList: phraseList,
-            contextInstructions: contextInstructions,
             voiceProfile: voiceProfile
         )
         let prompt: String
@@ -108,57 +85,23 @@ public enum PromptComposer: Sendable {
     /// Builds the durable `instructions` string for the `LanguageModelSession`.
     /// The age-group voice instruction is folded in here so it becomes part of
     /// the stable, prewarmable prefix — the whole point of the anti-cringe lever.
-    ///
-    /// NEW: Injects the discriminative voice fingerprint — quality patterns BOOSTED,
-    /// noise patterns SUPPRESSED. This is the "secret sauce" that makes signoffs
-    /// sound like the user's BEST writing, not their average writing.
     public static func makeInstructions(from template: PromptTemplate, ageGroup: AgeGroup = .genZ, voiceProfile: VoiceProfileSnapshot? = nil, nsfwEnabled: Bool = false) -> String {
         var parts: [String] = [template.system]
-        // Voice first: it's the strongest lever and stays consistent across
-        // every request for a given user, so it belongs in the stable prefix.
-        let voice = ageGroup.voiceInstruction
-        if !voice.isEmpty {
-            parts.append("Voice (this is the writer's generation — match it exactly):")
-            parts.append(voice)
-        }
+        // NOTE: AgeGroup voice instruction disabled temporarily to avoid
+        // Apple SensitiveContentAnalysisML content filter (error 15)
+        // let voice = ageGroup.voiceInstruction
+        // if !voice.isEmpty {
+        //     parts.append("Voice (this is the writer's generation — match it exactly):")
+        //     parts.append(voice)
+        // }
 
-        // Inject discriminative voice fingerprint if available
-        if let vp = voiceProfile, vp.learningConsentGranted {
-            let fingerprint = vp.discriminativeFingerprint
-            if !fingerprint.isEmpty {
-                parts.append("WRITING STYLE FINGERPRINT (learned from your actual writing — quality patterns amplified, rejected patterns suppressed):")
-                let topQuality = fingerprint
-                    .filter { $0.value > 0 }
-                    .sorted { $0.value > $1.value }
-                    .prefix(8)
-                    .map { "\"\($0.key)\" (weight: \(String(format: "%.2f", $0.value)))" }
-                    .joined(separator: ", ")
-
-                let topNoise = vp.noiseLexicalFingerprint
-                    .sorted { $0.value > $1.value }
-                    .prefix(4)
-                    .map { "\"\($0.key)\" (AVOID — user deletes this pattern)" }
-                    .joined(separator: ", ")
-
-                if !topQuality.isEmpty {
-                    parts.append("Patterns you naturally use: \(topQuality)")
-                }
-                if !topNoise.isEmpty {
-                    parts.append("Patterns you actively avoid: \(topNoise)")
-                }
-
-                // qualityPromptSummary is non-optional; it always returns a string (possibly empty)
-                let summary = vp.qualityPromptSummary
-                if !summary.isEmpty {
-                    parts.append("Your voice summary: \(summary)")
-                }
-            }
-        }
-
-        if !template.rules.isEmpty {
-            parts.append("Rules:")
-            parts.append(contentsOf: template.rules.map { "- \($0)" })
-        }
+        // NOTE: We do NOT include template.rules in instructions because they
+        /// contain banned-word lists that trigger Apple's SensitiveContentAnalysisML
+        /// content filter (error 15). Guard words are validated post-generation instead.
+        // if !template.rules.isEmpty {
+        //     parts.append("Rules:")
+        //     parts.append(contentsOf: template.rules.map { "- \($0)" })
+        // }
 
         // Cynical bucket only: when the user opts into NSFW, explicitly lift the
         // template's profanity/sexual-content bans. Always keep it witty, never
@@ -174,15 +117,24 @@ public enum PromptComposer: Sendable {
     private static func makePromptPrefix(
         userVariant: String,
         positiveExamples: [String],
-        negativeExamples: [String]
+        negativeExamples: [String],
+        guardWords: [String] = [],
+        attempt: Int = 1,
+        usedMechanisms: [String] = []
     ) -> String {
+        // DO NOT include examples - they seem to trigger content filter and banana fixation
         var sections: [String] = [userVariant]
-        if !positiveExamples.isEmpty {
-            sections.append("Good examples: " + positiveExamples.joined(separator: " / "))
+
+        // Add corrective instruction on retries
+        if attempt > 1 {
+            var corrective = "PREVIOUS ATTEMPT REJECTED. You must produce a different, higher-quality signoff."
+            if !usedMechanisms.isEmpty {
+                corrective += " Do not use these mechanisms again: \(usedMechanisms.joined(separator: ", "))."
+            }
+            corrective += " Be concise. No narration. No quotes. No markdown."
+            sections.append(corrective)
         }
-        if !negativeExamples.isEmpty {
-            sections.append("Avoid: " + negativeExamples.joined(separator: " / "))
-        }
+
         return sections.joined(separator: "\n\n")
     }
 
@@ -192,15 +144,9 @@ public enum PromptComposer: Sendable {
         recentTexts: [String],
         customInstructions: String?,
         phraseList: String?,
-        contextInstructions: String? = nil,
         voiceProfile: VoiceProfileSnapshot? = nil
     ) -> String {
         var sections: [String] = []
-
-        if let ctx = contextInstructions?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !ctx.isEmpty {
-            sections.append(ctx)
-        }
 
         if let custom = customInstructions?.trimmingCharacters(in: .whitespacesAndNewlines),
            !custom.isEmpty {
@@ -222,19 +168,6 @@ public enum PromptComposer: Sendable {
         var profileLines: [String] = []
         if !profile.selfDescription.isEmpty {
             profileLines.append("Voice: \(profile.selfDescription)")
-        }
-
-        // Inject adopted vs rejected signoff patterns from voice profile
-        if let vp = voiceProfile, vp.learningConsentGranted {
-            let adopted = vp.adoptedSignoffPatterns.suffix(3)
-            let rejected = vp.rejectedSignoffPatterns.suffix(2)
-
-            if !adopted.isEmpty {
-                profileLines.append("Signoffs you actually use: \(adopted.joined(separator: " | "))")
-            }
-            if !rejected.isEmpty {
-                profileLines.append("Signoffs you delete/replace: \(rejected.joined(separator: " | ")) — AVOID these")
-            }
         }
 
         if !profile.name.isEmpty {
