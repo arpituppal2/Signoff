@@ -42,6 +42,9 @@ public final class SignoffQualityValidator: ObservableObject {
 
     // Banned words/patterns that indicate low quality
     private let bannedTokens: Set<String> = [
+        "premium", "text matrix", "matrix",
+        "forgotten", "fourth eye", "4th eye",
+        "dreaming", "keyboard dreams",
         "surprisingly", "honestly", "aligned", "effortlessly",
         "ghost inbox", "phantom priorit", "stale optim",
         "typing feels like", "traffic prefers", "counting sheep",
@@ -58,7 +61,9 @@ public final class SignoffQualityValidator: ObservableObject {
         "felt natural", "aligned effortlessly", "valued input shaped",
         "collaboration felt", "steady rhythm", "steady groove",
         "ghost inbox", "phantom priorities", "stale optimism",
-        "inbox fumes", "running on", "feeding on"
+        "inbox fumes", "running on", "feeding on",
+        "premium", "text matrix", "forgotten", "fourth eye",
+        "keyboard dreams"
     ]
 
     // Minimum/maximum word counts per bucket (spec §voice buckets)
@@ -117,8 +122,13 @@ public final class SignoffQualityValidator: ObservableObject {
         if trimmed.hasPrefix("'") && trimmed.hasSuffix("'") {
             return .invalid(reason: "Wrapped in single quotes")
         }
-        if trimmed.contains("**") || trimmed.contains("*") || trimmed.contains("#") || trimmed.contains("`") {
+        // Reject actual markdown formatting, not single asterisk emphasis
+        if trimmed.contains("**") || trimmed.contains("#") || trimmed.contains("`") {
             return .invalid(reason: "Contains markdown formatting")
+        }
+        // Check for markdown list markers at start of line
+        if trimmed.hasPrefix("* ") || trimmed.hasPrefix("- ") || trimmed.hasPrefix("1. ") {
+            return .invalid(reason: "Contains markdown list formatting")
         }
 
         // 6. Banned tokens check
@@ -128,7 +138,12 @@ public final class SignoffQualityValidator: ObservableObject {
             }
         }
 
-        // 7. Banned n-grams check
+        // 7. Question mark check - signoffs must not end with question marks
+        if trimmed.hasSuffix("?") {
+            return .invalid(reason: "Ends with question mark")
+        }
+
+        // 8. Banned n-grams check
         for ngram in bannedNGrams {
             if lowercased.contains(ngram.lowercased()) {
                 return .invalid(reason: "Contains banned n-gram: \(ngram)")

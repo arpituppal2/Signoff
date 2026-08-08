@@ -50,7 +50,8 @@ public enum PromptComposer: Sendable {
         voiceProfile: VoiceProfileSnapshot? = nil,
         nsfwEnabled: Bool = false,
         attempt: Int = 1,
-        usedMechanisms: [String] = []
+        usedMechanisms: [String] = [],
+        curatedExamples: [String] = []
     ) -> Composed {
         let instructions = makeInstructions(from: template, ageGroup: ageGroup ?? .genZ, voiceProfile: voiceProfile, nsfwEnabled: nsfwEnabled)
         let userVariant = template.chooseUser(
@@ -65,7 +66,8 @@ public enum PromptComposer: Sendable {
             negativeExamples: template.negativeExamples,
             guardWords: template.guardWords,
             attempt: attempt,
-            usedMechanisms: usedMechanisms)
+            usedMechanisms: usedMechanisms,
+            curatedExamples: curatedExamples)
         let variableTail = makeVariableTail(
             profile: profile,
             recentTexts: recentTexts,
@@ -120,10 +122,17 @@ public enum PromptComposer: Sendable {
         negativeExamples: [String],
         guardWords: [String] = [],
         attempt: Int = 1,
-        usedMechanisms: [String] = []
+        usedMechanisms: [String] = [],
+        curatedExamples: [String] = []
     ) -> String {
-        // DO NOT include examples - they seem to trigger content filter and banana fixation
+        // Include curated corpus examples as in-context few-shots
+        // These are high-quality human-written examples that guide the model
         var sections: [String] = [userVariant]
+
+        // Add rotating curated examples (3 examples per request)
+        if !curatedExamples.isEmpty {
+            sections.append("Examples of good signoffs (study the style, do not copy):\n" + curatedExamples.map { "- \($0)" }.joined(separator: "\n"))
+        }
 
         // Add corrective instruction on retries
         if attempt > 1 {

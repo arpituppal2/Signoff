@@ -1,18 +1,20 @@
 {
-  "system": "You write witty, readable email signoffs — a single short line a funny, socially fluent friend would actually type. 2 to 14 words (up to 16 for a compact sentence-like closer). Internal commas are fine; end with a comma. The humor lives in one clear angle: a subverted conventional closer (\"Regards, but not many\"), a fake device line (\"Sent from my last 3.5 brain cells\"), a familiar phrase with a twist, a small dramatic but recognizable closer, a one-word deadpan declaration (\"Allegedly\"), or a broad pop-culture beat. It must land in one read and feel intentionally authored, not random. No surreal noun+verb poetry. No \"X feels like Y, surprisingly.\" No abstract observations about traffic, typing, clocks, weather, or animals. No vague quirky adjectives. Do NOT end with \"honestly\" or \"surprisingly.\" Capitalize only the first word. No quotation marks. No emoji. No markdown. No hashtags. Output ONLY the signoff and nothing else — no labels, no explanation.",
+  "system": "You write witty, readable email signoffs — a single short line a funny, socially fluent friend would actually type. 2 to 14 words (up to 16 for a compact sentence-like closer). Internal commas are fine; end with EXACTLY ONE COMMA. The humor lives in one clear angle: a subverted conventional closer (\"Regards, but not many\"), a fake device line (\"Sent from my last 3.5 brain cells\"), a familiar phrase with a twist, a small dramatic but recognizable closer, a one-word deadpan declaration (\"Allegedly\"), or a broad pop-culture beat. It must land in one read and feel intentionally authored, not random. No surreal noun+verb poetry. No \"X feels like Y, surprisingly.\" No abstract observations about traffic, typing, clocks, weather, or animals. No vague quirky adjectives. Do NOT end with \"honestly\" or \"surprisingly.\" Capitalize only the first word. No quotation marks. No emoji. No markdown. No hashtags. Output ONLY the signoff and nothing else — no labels, no explanation.",
   "rules": [
-    "Output ONLY one signoff line ending with a comma. Nothing else.",
+    "Output ONLY one signoff line ending with EXACTLY ONE COMMA. Nothing else.",
     "2 to 14 words; up to 16 only for a compact, sentence-like closer.",
     "The humor is one clear angle — subverted closer, fake metadata, phrase twist, dramatic closer, or punchy declaration.",
     "It must be understood in one read and feel intentional, not random.",
     "No surreal noun+verb statements with no social or emotional premise.",
     "Never use \"surprisingly\" or \"honestly.\" No abstract traffic/typing/clock/animal observations.",
-    "Capitalize ONLY the first word. No ALL-CAPS words."
+    "Capitalize ONLY the first word. No ALL-CAPS words.",
+    "Must end with exactly one comma.",
+    "No question marks, no exclamation marks, no periods at end."
   ],
   "userVariants": [
     {
       "when": {},
-      "user": "Write ONE witty, genuinely usable email signoff: a single line of 2 to 14 words (up to 16 if compact) ending with a comma. It should read like a funny friend typing a closer — one clear angle: a subverted conventional closer, a fake \"Sent from…\" line, a familiar phrase lightly bent, a small dramatic closer, or a deadpan one-word declaration. Make it land in one read. Do NOT produce surreal noun+verb poetry, abstract traffic/typing/clock observations, or anything ending in \"surprisingly\"/\"honestly.\" Internal commas are fine. Capitalize ONLY the first word. End with a comma. Output only the signoff."
+      "user": "Write ONE witty, genuinely usable email signoff: a single line of 2 to 14 words (up to 16 if compact) ending with EXACTLY ONE COMMA. It should read like a funny friend typing a closer — one clear angle: a subverted conventional closer, a fake \"Sent from…\" line, a familiar phrase lightly bent, a small dramatic closer, or a deadpan one-word declaration. Make it land in one read. Do NOT produce surreal noun+verb poetry, abstract traffic/typing/clock observations, or anything ending in \"surprisingly\"/\"honestly.\" Internal commas are fine. Capitalize ONLY the first word. End with ONE COMMA. Output only the signoff."
     }
   ],
   "guardWords": [
@@ -20,7 +22,8 @@
     "inbox fumes", "typing feels like", "traffic prefers", "counting sheep",
     "collaboration felt", "aligned", "effortlessly", "synergy", "journey",
     "path forward", "vision", "meaningful dialogue", "transformative",
-    "partnership"
+    "partnership", "premium", "text matrix", "forgotten", "fourth eye",
+    "keyboard dreams", "dreaming"
   ],
   "positiveExamples": [],
   "negativeExamples": []

@@ -197,6 +197,15 @@ public final class GenerationService: ObservableObject {
 
                 do {
                     // Compose prompt with rotating curated examples
+                    // Fetch curated examples for few-shot prompting
+                    SignoffCorpusLoader.shared.load()
+                    let corpusEntries = SignoffCorpusLoader.shared.corpus.entries(for: bucketId)
+                    let availableEntries = corpusEntries.filter { !existingMechanisms.contains($0.mechanism) }
+                    let selectedEntries = availableEntries.shuffled().prefix(3)
+                    let curatedExamples = selectedEntries.isEmpty
+                        ? corpusEntries.shuffled().prefix(3).map { $0.text }
+                        : selectedEntries.map { $0.text }
+
                     let composed = PromptComposer.compose(
                         template: template, profile: snapshot, recentTexts: recentTexts,
                         unhingedLevel: unhingedLevel, toneValue: toneValue, postfixMode: postfixMode,
@@ -205,7 +214,8 @@ public final class GenerationService: ObservableObject {
                         voiceProfile: voiceSnapshot,
                         nsfwEnabled: nsfwEnabled,
                         attempt: attempt,
-                        usedMechanisms: existingMechanisms)
+                        usedMechanisms: existingMechanisms,
+                        curatedExamples: curatedExamples)
 
                     let context = ProviderGenerateContext(
                         bucketId: bucketId, template: template, composed: composed,
