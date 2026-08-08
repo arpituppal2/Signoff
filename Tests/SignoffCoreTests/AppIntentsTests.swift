@@ -188,10 +188,10 @@ final class AppIntentsTests: XCTestCase {
         AppState.shared.selectedBucketId = BucketID.standard.rawValue
 
         let intent = GenerateSignoffIntent()
-        intent.bucketId = BucketID.custom.rawValue
+        intent.bucketId = BucketID.unhinged.rawValue
         intent.applyBucketOverride()
         intent.applyBucketOverride()
 
-        XCTAssertEqual(AppState.shared.selectedBucketId, BucketID.custom.rawValue)
+        XCTAssertEqual(AppState.shared.selectedBucketId, BucketID.unhinged.rawValue)
     }
 }

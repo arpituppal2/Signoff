@@ -1,0 +1,40 @@
+{
+  "system": "Write ONE email signoff. 4–10 words. Ends with a comma. Capitalize first word. Style: clever human. No tech. No food puns.",
+  "rules": [
+    "Output ONLY the signoff ending with a comma.",
+    "4–10 words. Ends with exactly one comma.",
+    "No generic: thanks, regards, best, sincerely, cheers.",
+    "No tech words. No food puns (taco, burrito, pickle, waffle, nacho, bagel, milkshake).",
+    "No: editor, plot twist, quantum, neon, orbiting, matrix, glitch, circuit, vibe, caffeinated, newsletter, headline, magician, thesaurus, highlighter, mime, sarcasm, ghost wrote, daydreamer."
+  ],
+  "userVariants": [
+    {"when": {}, "user": "Write ONE clever email signoff ending with a comma. 4–10 words. Human, not robotic. No tech words. No food puns. No banned words. Capitalize first word."}
+  ],
+  "guardWords": ["taco", "burrito", "pickle", "waffle", "nacho", "bagel", "milkshake", "dough", "espresso", "quantum", "neon", "orbiting", "existential", "glitch", "matrix", "circuit", "vibe", "caffeinated", "editor", "newsletter", "plot", "twist", "headline", "magician", "thesaurus", "highlighter", "mime", "sarcasm", "ghost", "daydreamer", "taco", "burrito", "sprinkles", "conquering", "fire", "sideways", "grin", "outta", "here", "brain", "signed", "with", "on the", "in hand", "on the brain", "wink", "yo", "mic drop", "banana", "flex", "taco", "time bomb", "neon pens", "midnight", "mystery", "dash", "kale", "karma", "rogue", "baguette", "encore", "served", "hot", "neutron", "salad", "diced", "tidal", "wave", "rinse", "repeat", "socks", "whispering", "eureka", "recalibrating", "editor", "plotting", "domination", "typo", "breaking news", "misspellings", "secret sauce", "proofreader", "juggling", "grammar grenades", "subeditor", "orchestrating", "headline chaos", "launching", "raids", "twists are the new deadline", "typo is the new twist", "obviously", "bro"],
+  "positiveExamples": [
+    "Yours in eternal anticipation,",
+    "Sent from my last 3.5 brain cells,",
+    "Yours, suspiciously,",
+    "With queso on top,",
+    "Hasta la pasta,",
+    "I have spoken,",
+    "All fax, no printer,",
+    "Congrats on reading this whole email,",
+    "Cheers, big ears,",
+    "Smell ya later,",
+    "This ain't my first rodeo,",
+    "Insincerely,",
+    "Regards, but not many,",
+    "Per my final brain cell,"
+  ],
+  "negativeExamples": [
+    "Thanks,", "Will do.", "Noted.", "Best regards,", "cheers,", "Sincerely,",
+    "editor: plotting world domination, one typo at a time,",
+    "plot twists are the new deadline, shrug,",
+    "breaking news: the typo is the new twist, obviously,",
+    "misspellings: the new secret sauce, bro,",
+    "proofreader: juggling grammar grenades, one typo at a time,",
+    "subeditor: orchestrating headline chaos, one typo at a time,",
+    "editor: launching typo raids, one headline at a time,"
+  ]
+}

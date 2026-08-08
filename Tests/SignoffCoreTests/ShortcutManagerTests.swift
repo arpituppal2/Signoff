@@ -40,20 +40,19 @@ final class ShortcutManagerTests: XCTestCase {
 
     func testOptCmdDefaultsUseOptionCommand() {
         let opt = ShortcutManager.shared.optCmdDefaults()
-        XCTAssertEqual(opt.count, 4)
+        XCTAssertEqual(opt.count, 3)
         XCTAssertTrue(opt.allSatisfy { $0.modifier == "optCmd" })
-        XCTAssertEqual(opt.map(\.digitKey), ["1", "2", "3", "4"])
+        XCTAssertEqual(opt.map(\.digitKey), ["1", "2", "3"])
     }
 
-    func testDefaultMappingIsNormalProfessionalCynicalCustom() {
+    func testDefaultMappingIsNormalProfessionalCynical() {
         // v3.5: 1 Normal · 2 Professional · 3 Cynical · 4 Custom (` opens menu bar).
         let defaults = ShortcutManager.shared.defaults()
         XCTAssertEqual(defaults.map(\.bucketId),
                        [BucketID.standard.rawValue,
                         BucketID.professional.rawValue,
-                        BucketID.unhinged.rawValue,
-                        BucketID.custom.rawValue])
-        XCTAssertEqual(defaults.map(\.digitKey), ["1", "2", "3", "4"])
+                        BucketID.unhinged.rawValue])
+        XCTAssertEqual(defaults.map(\.digitKey), ["1", "2", "3"])
     }
 
     func testProbePublishesBoundShortcutConflicts() async {
@@ -88,7 +87,7 @@ final class ShortcutManagerTests: XCTestCase {
         }
 
         manager.isPaused = false
-        await manager.register(bindings: manager.defaults()) { _ in }
+        await manager.register(bindings: manager.defaults()) { _ in } runSpecialAction: { _ in }
         manager.suspendTapTemporarily()
         XCTAssertFalse(manager.isPaused,
                        "Recorder suspend must not flip Pause shortcuts")

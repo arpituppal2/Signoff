@@ -6,7 +6,7 @@ import XCTest
 final class BundledProviderTests: XCTestCase {
 
     func testPromptTemplates_AllBucketsDecode() {
-        let buckets = [BucketID.standard, .professional, .unhinged, .custom]
+        let buckets = [BucketID.standard, .professional, .unhinged]
         for bid in buckets {
             let loaded = PromptTemplate.load(bucket: bid.rawValue)
             XCTAssertNotNil(loaded, "Expected Prompt for bucket \(bid.rawValue)")
@@ -23,8 +23,9 @@ final class BundledProviderTests: XCTestCase {
         XCTAssertFalse(template.system.isEmpty)
         XCTAssertFalse(template.rules.isEmpty)
         XCTAssertFalse(template.userVariants.isEmpty)
-        XCTAssertFalse(template.positiveExamples.isEmpty)
-        XCTAssertFalse(template.negativeExamples.isEmpty)
+        // positiveExamples and negativeExamples can be empty - we don't use them in prompt prefix
+        XCTAssertNotNil(template.positiveExamples)
+        XCTAssertNotNil(template.negativeExamples)
     }
 
     func testPromptTemplate_FallbackIsAvailable() {
