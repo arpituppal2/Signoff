@@ -97,10 +97,23 @@ struct PasteboardSnapshot: Equatable {
 public final class PasteAutomation: ObservableObject, @unchecked Sendable {
     public static let shared = PasteAutomation()
 
-    /// Published flag the onboarding PermissionsStep observes so the row can
+    /// Published flag the onboarding Templates observes so the row can
     /// flip from "Grant Permission" to "Granted ✓" without a full SwiftUI body
     /// re-evaluation. Updated by `requestPermission()` after AX probes.
     @Published public private(set) var isPermissionGranted: Bool = AXIsProcessTrusted()
+
+    // MARK: - Rapid Replace tracking
+
+    /// Text that was most recently pasted (for character-count replace).
+    public private(set) var lastPastedText: String?
+    /// Timestamp of the most recent paste, used with `rapidReplaceCooldownSeconds`.
+    public private(set) var lastPastedAt: Date?
+
+    /// Forgets the prior paste — the next trigger always inserts at cursor.
+    public func forgetLastPaste() {
+        lastPastedText = nil
+        lastPastedAt = nil
+    }
 
     /// Overridable Accessibility probe — production uses `AXIsProcessTrusted`.
     /// Unit tests inject a deterministic closure so the denied path can be
@@ -171,6 +184,31 @@ public final class PasteAutomation: ObservableObject, @unchecked Sendable {
                 throw PasteError.pasteboardWriteFailed
             }
         }
+        lastPastedText = text
+        lastPastedAt = Date()
+    }
+
+    /// Replaces the previously-pasted text with `newText`. Simulates
+    /// Shift+Left Arrow (character-by-character backward select) for the length
+    /// of the last pasted text, then Cmd+V to paste over the selection. If there
+    /// is no tracked prior paste, falls back to a normal paste at the cursor.
+    public func replacePreviousAndPaste(_ newText: String) async throws {
+        guard let prior = lastPastedText, !prior.isEmpty else {
+            // No prior paste — just paste normally.
+            try await paste(newText)
+            return
+        }
+        // Select backward N characters (Shift+Left for each char of prior text),
+        // then paste the new text which replaces the selection.
+        try await paste(write: { pb in
+            pb.clearContents()
+            guard pb.setString(newText, forType: .string) else {
+                throw PasteError.pasteboardWriteFailed
+            }
+        }, prePasteSelectionCount: prior.count)
+
+        lastPastedText = newText
+        lastPastedAt = Date()
     }
 
     /// Same steal-and-paste flow as `paste(_:)`, but writes a rich-text
@@ -188,10 +226,14 @@ public final class PasteAutomation: ObservableObject, @unchecked Sendable {
     /// Shared steal-and-paste pipeline. The `write` closure commits the
     /// temporary clipboard contents; everything after is the ⌘V synthesis and
     /// the delayed prior-clipboard restore.
-    private func paste(write: (NSPasteboard) throws -> Void) async throws {
+    /// - Parameter prePasteSelectionCount: when non-nil, simulates Shift+Left
+    ///   Arrow that many times BEFORE pasting, so the paste replaces the selected
+    ///   text instead of inserting at the cursor. Nil = paste normaly.
+    private func paste(write: (NSPasteboard) throws -> Void,
+                       prePasteSelectionCount: Int? = nil) async throws {
         // 1. Never fire the system AX prompt until the brand explainer has
         // been shown (SignoffUI posts `.signoffNeedsA11yExplainer`). Prevents
-        // the cold "ugh, more permissions" system sheet on first ⌃⌘1.
+        // the cold "ugh, more permissions" system sheet on first ⌃⌥1.
         let explainerKey = "SignoffA11yExplainerShown"
         let promptedKey = "signoff.axPrompted"
         if !UserDefaults.standard.bool(forKey: explainerKey) {
@@ -255,8 +297,26 @@ public final class PasteAutomation: ObservableObject, @unchecked Sendable {
         // Cmd+V users without vocal system feedback still get a "click."
         NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .now)
 
-        // 3. Synthesize Cmd+V down/up — only reached when Accessibility is trusted.
+        // 2.5 If caller requested backward selection (rapid replace), simulate
+        // Shift+Left Arrow N times to select the previous text in-place before
+        // Cmd+V replaces it.
         let src = CGEventSource(stateID: .hidSystemState)
+        if let count = prePasteSelectionCount, count > 0 {
+            let keyLeft: CGKeyCode = 0x7B  // Left Arrow
+            for _ in 0..<count {
+                if let down = CGEvent(keyboardEventSource: src, virtualKey: keyLeft, keyDown: true) {
+                    down.flags = .maskShift
+                    down.post(tap: .cgAnnotatedSessionEventTap)
+                }
+                if let up = CGEvent(keyboardEventSource: src, virtualKey: keyLeft, keyDown: false) {
+                    up.flags = .maskShift
+                    up.post(tap: .cgAnnotatedSessionEventTap)
+                }
+            }
+            try? await Task.sleep(nanoseconds: 5_000_000)
+        }
+
+        // 3. Synthesize Cmd+V down/up — only reached when Accessibility is trusted.
         let keyV: CGKeyCode = 9
         if let down = CGEvent(keyboardEventSource: src, virtualKey: keyV, keyDown: true) {
             down.flags = .maskCommand

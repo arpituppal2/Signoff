@@ -3,7 +3,7 @@ import SwiftUI
 import SignoffCore
 
 /// Captures a bucket hotkey chord via a local key-down monitor and reports
-/// digit + modifier back to Settings → Shortcuts. Supports ⌃⌘1–4 and ⌥⌘1–4
+/// digit + modifier back to Settings → Shortcuts. Supports ⌃⌥1–4 and ⌥⌘1–4
 /// (the two modifier families Signoff registers).
 ///
 /// While recording, the Carbon event tap is temporarily suspended (without
@@ -40,17 +40,22 @@ public struct ShortcutRecorderView: View {
         }
         .buttonStyle(.bordered)
         .help(session.isRecording
-              ? "Press ⌃⌘ or ⌥⌘ plus a digit 1–4. Esc cancels."
+              ? "Press ⌃⌥ or ⌥⌘ plus a digit 1–4. Esc cancels."
               : "Click, then press a new shortcut")
         .accessibilityLabel(session.isRecording ? "Recording shortcut" : "Shortcut \(displayString)")
         .accessibilityHint(session.isRecording
-                           ? "Press Control-Command or Option-Command and a digit from 1 to 4"
+                           ? "Press Control-Option or Option-Command and a digit from 1 to 4"
                            : "Activate to record a new shortcut")
         .onDisappear { session.stop(resumeTap: true) }
     }
 
     private var displayString: String {
-        let mod = currentModifier == "optCmd" ? "⌥⌘" : "⌃⌘"
+        let mod: String
+        switch currentModifier {
+        case "ctrlOpt": mod = "⌃⌥"
+        case "optCmd": mod = "⌥⌘"
+        default: mod = "⌃⌘"
+        }
         return "\(mod)\(currentDigitKey)"
     }
 }
@@ -76,13 +81,24 @@ private final class RecorderSession: ObservableObject {
             let hasCommand = flags.contains(.command)
             let hasControl = flags.contains(.control)
             let hasOption = flags.contains(.option)
-            guard hasCommand, hasControl || hasOption else { return event }
 
-            let modifier = (hasOption && !hasControl) ? "optCmd" : "cmdCtrl"
+            // Support ⌃⌥ (ctrlOpt), ⌥⌘ (optCmd), ⌃⌘ (cmdCtrl)
+            let modifier: String?
+            if hasControl && hasOption && !hasCommand {
+                modifier = "ctrlOpt"
+            } else if hasOption && hasCommand && !hasControl {
+                modifier = "optCmd"
+            } else if hasControl && hasCommand && !hasOption {
+                modifier = "cmdCtrl"
+            } else {
+                modifier = nil
+            }
+            guard let mod = modifier else { return event }
+
             Task { @MainActor in
                 // Commit first; Settings' `applyShortcutBindings` re-registers.
                 // `resumeTap: false` avoids a race that would reinstall old chords.
-                onCommit(digit, modifier)
+                onCommit(digit, mod)
                 self?.stop(resumeTap: false)
             }
             return nil

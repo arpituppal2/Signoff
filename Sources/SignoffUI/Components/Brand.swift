@@ -9,9 +9,9 @@ import SignoffCore
 /// veil over translucent material, not an opaque paint coat.
 ///
 /// Motion: spring-first, purposeful. Every transition has weight.
-/// Materials: ultra-thin frosted glass (50 % translucency) with a tiny
-/// calibrated bucket tint, so the popover reads as transparent but never
-/// colorless. Everything is SF Symbol + text — no custom paths, no gradients.
+/// Materials: frosted glass hierarchy (regular > thin > ultraThin) with
+/// calibrated bucket tints, so surfaces read as transparent but never colorless.
+/// Everything is SF Symbol + text — no custom paths, no gradients.
 public enum Brand {
 
     // MARK: - Brand Accent (Neutral)
@@ -56,41 +56,78 @@ public enum Brand {
         public static let maxContentWidth: CGFloat = 560
     }
 
-    // MARK: - Motion Choreography
+    // MARK: - Motion Choreography (Fluid Interface)
 
     public enum Motion {
-        /// Primary spring — UI responds with weight.
-        /// Gated by Reduce Motion: resolves to nil when accessibilityReduceMotion is active.
-        public static let springPrimary   = Animation.spring(response: 0.45, dampingFraction: 0.82, blendDuration: 0)
-        /// Quick spring — micro interactions.
-        public static let springQuick     = Animation.spring(response: 0.28, dampingFraction: 0.88, blendDuration: 0)
-        /// Gentle spring — content entrance.
-        public static let springGentle    = Animation.spring(response: 0.55, dampingFraction: 0.85, blendDuration: 0)
-        /// Expressive spring — celebratory moments.
-        public static let springExpressive = Animation.spring(response: 0.5, dampingFraction: 0.7, blendDuration: 0)
+        // MARK: Fluid Springs (Apple WWDC 2018 Designing Fluid Interfaces)
+        // Damping: 1.0 = critically damped (no overshoot, dismissive/closing)
+        // Damping: 0.8 = slightly underdamped (expressive, entrance/expansion)
+        // Response: keeps "weight" consistent; blendDuration: 0 for instant handoff
 
-        /// Ease for fades / cross-fades
-        public static let easeOut    = Animation.easeOut(duration: 0.2)
-        public static let easeInOut  = Animation.easeInOut(duration: 0.3)
-        public static let easeSlow   = Animation.easeOut(duration: 0.5)
+        /// Critically damped — for dismiss, close, collapse. No bounce, immediate settle.
+        public static let springDismiss = Animation.spring(response: 0.35, dampingFraction: 1.0, blendDuration: 0)
+        /// Slightly underdamped — for expand, reveal, generate. Gentle overshoot feels alive.
+        public static let springReveal  = Animation.spring(response: 0.42, dampingFraction: 0.8, blendDuration: 0)
+        /// Interactive spring — for drag, swipe, user-driven. Velocity handoff enabled.
+        public static let springInteractive = Animation.interactiveSpring(response: 0.38, dampingFraction: 0.82, blendDuration: 0)
+        /// Quick micro-interaction — hover, press, focus.
+        public static let springMicro   = Animation.spring(response: 0.22, dampingFraction: 0.9, blendDuration: 0)
+        /// Content entrance — staggered list items.
+        public static let springEntrance = Animation.spring(response: 0.5, dampingFraction: 0.85, blendDuration: 0)
+        /// Celebratory — success, copy confirmation.
+        public static let springCelebrate = Animation.spring(response: 0.45, dampingFraction: 0.7, blendDuration: 0)
+
+        /// Ease for fades / cross-fades (non-spring)
+        public static let easeOut    = Animation.easeOut(duration: 0.18)
+        public static let easeInOut  = Animation.easeInOut(duration: 0.25)
+        public static let easeSlow   = Animation.easeOut(duration: 0.45)
 
         /// Stagger delay between sibling elements
-        public static let staggerDelay: Double = 0.06
+        public static let staggerDelay: Double = 0.05
 
         /// Shimmer sweep duration
         public static let shimmerDuration: Double = 1.4
 
-        /// Returns a motion-safe animation for a spring. When Reduce Motion is
-        /// enabled, replaces springs and x/y/z translations with a simple fade
-        /// to avoid triggering vestibular discomfort (per HIG Accessibility).
+        /// Returns a motion-safe animation. When Reduce Motion is enabled,
+        /// replaces springs and spatial translations with a simple fade.
         public static func safe(
             _ animation: Animation,
             reduceMotion: Bool
         ) -> Animation {
             if reduceMotion {
-                return .easeOut(duration: 0.2)
+                return .easeOut(duration: 0.18)
             }
             return animation
+        }
+
+        /// Returns the spring for a given intent. Encodes the fluid vocabulary.
+        public static func spring(for intent: SpringIntent, reduceMotion: Bool) -> Animation {
+            let spring: Animation
+            switch intent {
+            case .dismiss, .close, .collapse:
+                spring = springDismiss
+            case .reveal, .expand, .generate:
+                spring = springReveal
+            case .interactiveDrag, .interactiveSwipe:
+                spring = springInteractive
+            case .micro, .hover, .press, .focus:
+                spring = springMicro
+            case .entrance, .staggeredEntrance:
+                spring = springEntrance
+            case .celebrate, .success:
+                spring = springCelebrate
+            }
+            return safe(spring, reduceMotion: reduceMotion)
+        }
+
+        /// High-level intent for choosing the right spring.
+        public enum SpringIntent {
+            case dismiss, close, collapse
+            case reveal, expand, generate
+            case interactiveDrag, interactiveSwipe
+            case micro, hover, press, focus
+            case entrance, staggeredEntrance
+            case celebrate, success
         }
     }
 
@@ -210,12 +247,14 @@ public enum Brand {
         }
     }
 
-    // MARK: - Typography Scale
+    // MARK: - Typography Scale (Fluid: optical sizing, tracking, leading)
 
     /// Consistent type scale across the app using system fonts with Dynamic Type support.
     /// Serif reserved for extended reading (signoff output).
+    /// Uses optical sizing (.default) for system fonts — automatically adjusts tracking/leading
+    /// at display vs body sizes. Explicit tracking added where brand voice needs it.
     public enum Typography {
-        /// Large display text (onboarding headlines)
+        /// Large display text (onboarding headlines) — slight negative tracking for weight
         public static let display = Font.system(.title, design: .rounded).weight(.semibold)
         /// Section headlines
         public static let headline = Font.system(.headline, design: .rounded).weight(.semibold)
@@ -229,10 +268,32 @@ public enum Brand {
         public static let caption1 = Font.system(.caption)
         /// Caption 2
         public static let caption2 = Font.system(.caption2)
-        /// Signoff output — serif for extended reading
+        /// Signoff output — serif for extended reading, slight extra leading for breath
         public static let signoff = Font.system(.body, design: .serif).weight(.regular)
         /// Monospace for codes/shortcuts
         public static let mono = Font.system(.footnote, design: .monospaced)
+
+        /// Tracking values for specific contexts (applied via .tracking())
+        public enum Tracking {
+            /// Display/headline: slightly tight for presence
+            public static let headline: CGFloat = -0.3
+            /// Signoff text: slightly open for readability at serif sizes
+            public static let signoff: CGFloat = 0.15
+            /// UI labels: standard
+            public static let ui: CGFloat = 0
+            /// Monospace: standard
+            public static let mono: CGFloat = 0
+        }
+
+        /// Line spacing (leading) values (applied via .lineSpacing())
+        public enum Leading {
+            /// Signoff: comfortable reading
+            public static let signoff: CGFloat = 4
+            /// Body: standard
+            public static let body: CGFloat = 2
+            /// Compact: tight for lists
+            public static let compact: CGFloat = 1
+        }
     }
 
     // MARK: - Bucket Tonal Accents (Ink Shades)
@@ -245,7 +306,6 @@ public enum Brand {
         case .standard:     return scheme == .dark ? standardDark  : standardLight   // Dependable ink
         case .professional: return scheme == .dark ? profDark     : profLight      // Measured indigo
         case .unhinged:     return scheme == .dark ? unhDark      : unhLight       // Chaotic rust
-        case .custom:       return ember(for: scheme)                              // Brand ember
         case .list:         return scheme == .dark ? listDark     : listLight      // Collected sage
         case .footer:       return scheme == .dark ? footerDark   : footerLight    // Formal slate
         case .generalLegacy:return ember(for: scheme)
@@ -322,7 +382,7 @@ extension View {
     func staggeredEntrance(
         index: Int,
         delay: Double = Brand.Motion.staggerDelay,
-        animation: Animation = Brand.Motion.springGentle,
+        animation: Animation = Brand.Motion.springEntrance,
         reduceMotion: Bool = false
     ) -> some View {
         let safeAnimation = Brand.Motion.safe(animation, reduceMotion: reduceMotion)

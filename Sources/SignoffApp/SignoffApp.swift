@@ -4,7 +4,6 @@ import Combine
 import os
 import SignoffCore
 import SignoffUI
-import TipKit
 
 /// Single-source-of-truth app glue. v2 spec §21 ship-locked.
 @main
@@ -12,11 +11,26 @@ struct SignoffApp: App {
     @NSApplicationDelegateAdaptor(SignoffDelegate.self) var delegate
     /// Bridges `AppState.shared.@Published` flags into the CommandMenu's
     /// `.disabled(...)` closures so the Signoff submenu's "Generate Signoff"
-    /// item correctly dims while a generation is in flight, AND so "Copy
-    /// Last Signoff" correctly dims when the recent-strip is empty.
+    /// item correctly dims while a generation is in flight, AND so "Copy Last
+    /// Signoff" correctly dims when the recent-strip is empty.
     @StateObject private var menuState = SignoffMenuState()
 
     var body: some Scene {
+        // Onboarding — its own window so it's a real, focusable macOS surface
+        // (not a sheet dangling off a hidden host). Gated by `showOnboarding`,
+        // which `AppState` derives from `settings.hasCompletedOnboarding` +
+        // `requiredOnboardingVersion` after `initialize()`.
+        WindowGroup("Welcome to Signoff", id: "signoff.onboarding") {
+            if AppState.shared.showOnboarding {
+                OnboardingView()
+                    .environmentObject(AppState.shared)
+            } else {
+                EmptyView()
+            }
+        }
+        .windowResizability(.contentSize)
+        .defaultSize(width: 480, height: 560)
+
         // Hidden settings context — MUST precede the Settings scene so the
         // `openSettings` environment action resolves (macOS 14+ moved Settings
         // opening off the showSettingsWindow: selectors; see SettingsContextView).
@@ -110,24 +124,23 @@ final class SignoffDelegate: NSObject, NSApplicationDelegate {
             NSApp.setActivationPolicy(.accessory)
         }
 
-        // Configure TipKit for contextual onboarding
-        configureTips()
-
         let launchSignpost = SignoffSignpost.coldLaunch.makeSignpostID()
         let launchState = SignoffSignpost.coldLaunch.beginInterval("launch", id: launchSignpost)
 
         SparkleIntegration.shared.startIfNeeded()
 
-        if #available(macOS 26, *) {
-            Task.detached(priority: .utility) {
-                await GenerationService.shared.prewarmFoundationModels()
-            }
-        }
+        // No launch-time prewarm — every generation is a live on-device call by
+        // user request. Prewarming fired the model for 3 buckets at boot, which
+        // read as "generating several at once" and produced canned-looking output.
+
 
         Task {
             do {
                 try await appState.initialize()
                 SignoffSignpost.coldLaunch.endInterval("launch", launchState)
+                // Onboarding reveal is driven by `SignoffMenuContent` which
+                // observes `showOnboarding` and owns `@Environment(\.openWindow)`.
+                // We only flip the flag here; the scene opens the window.
             } catch {
                 NSLog("❌ Signoff init failed: %@", String(describing: error))
                 SignoffSignpost.coldLaunch.endInterval("launch", launchState)
@@ -149,6 +162,25 @@ final class SignoffDelegate: NSObject, NSApplicationDelegate {
         // ⌃⌘` opens the menu bar popover from any app.
         NotificationCenter.default.addObserver(self, selector: #selector(openMenuBarPopover),
                                                name: .toggleMenuBarPopover, object: nil)
+        // Global generate shortcut → animate a little signature at the caret
+        // where the user is typing, before the paste lands.
+        NotificationCenter.default.addObserver(self, selector: #selector(showSignatureAtCaret),
+                                               name: .signoffShortcutGenerateStarted, object: nil)
+    }
+
+    @objc private func showSignatureAtCaret() {
+        MainActor.assumeIsolated {
+            var rect = CaretLocator.shared.caretScreenRect()
+            // Fallback: animate above the menu bar (top-right) if we can't resolve
+            // the caret — still gives feedback, never blocks the paste.
+            if rect == nil, let screen = NSScreen.main ?? NSScreen.screens.first {
+                let mb = NSStatusBar.system.thickness
+                rect = NSRect(x: screen.frame.maxX - 120,
+                              y: screen.frame.maxY - mb - 60,
+                              width: 80, height: 50)
+            }
+            SignatureOverlayWindow.shared.show(at: rect, duration: 0.9)
+        }
     }
 
     @objc private func openMenuBarPopover() {
@@ -240,3 +272,8 @@ struct MenuBarLabelView: View {
         Image(systemName: "signature")
     }
 }
+
+/// Onboarding presentation is now handled directly by `SignoffMenuContent`,
+/// which owns both `@EnvironmentObject private var appState` and
+/// `@Environment(\.openWindow)` — the two things needed to observe the
+/// `showOnboarding` flag and the `.signoffOnboardingRequested` notification.

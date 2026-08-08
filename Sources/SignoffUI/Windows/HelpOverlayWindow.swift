@@ -45,19 +45,20 @@ struct HelpOverlayRootView: View {
 
     private var entries: [(topic: String, body: String)] {
         return [
-        ("⌃⌘1–4", "Global generate shortcuts (Control-Command + digit). 1 Normal · 2 Professional · 3 Cynical · 4 Custom. Works from any text field — no popover needed. Rebind under Settings → Shortcuts."),
-        ("⌃⌘` opens menu bar", "Press Control-Command-backtick from anywhere to open the Signoff menu bar without clicking the icon."),
-        ("⌃⌘1 generates", "Press ⌃⌘1 from any text field. Signoff drafts the signoff on-device and copies it to your clipboard — press ⌘V to paste at the cursor."),
+        ("⌃⌥1–3", "Global generate shortcuts (Control-Option + digit). 1 Normal · 2 Professional · 3 Cynical. Works from any text field — no popover needed. Rebind under Settings → Shortcuts, or switch all to ⌥⌘1–3 if ⌃⌥ clashes."),
+        ("⌃⌥` opens menu bar", "Press Control-Option-backtick from anywhere to open the Signoff menu bar without clicking the icon."),
+        ("⌃⌥1 generates", "Press ⌃⌥1 from any text field. Signoff drafts the signoff on-device and pastes it at the cursor. Turn auto-paste off in Settings → General → Auto-paste on shortcut to copy only."),
         ("Copy last", "⌃⇧C re-copies your most recent signoff without generating a new one."),
-        ("On-device generation", "Signoffs are drafted by Apple's on-device Foundation Models and stay on your Mac. Nothing is ever uploaded. The Custom voice copies your own rich-text footer — formatting and image included."),
-        ("Cynical intensity", "Settings → Buckets → Cynical lets you pick an intensity (Calm → Deadpan) and optionally allow explicit content."),
+        ("After signoff", "Settings → General → After signoff lets you type a line that always appears below your paste — pronouns, a phone number, or a tagline. Leave it blank for just the signoff."),
+        ("On-device generation", "Signoffs are drafted by Apple's on-device Foundation Models and stay on your Mac. Nothing is ever uploaded."),
         ("Accessibility", "Signoff needs Accessibility to paste without switching focus. Open Privacy & Security → Accessibility to enable."),
-        ("Input Monitoring", "Global shortcuts (⌃⌘1–4) need Input Monitoring — separate from Accessibility. Open Privacy & Security → Input Monitoring and enable Signoff."),
+        ("Input Monitoring", "Global shortcuts (⌃⌥1–3) need Input Monitoring — separate from Accessibility. Open Privacy & Security → Input Monitoring and enable Signoff."),
         ("Apple Intelligence", "On-device drafting runs when Apple Intelligence is available. Enable it in System Settings → Apple Intelligence & Siri for live generation."),
         ("Free and open source", "Signoff is free and open source under the MIT license. All features are available to everyone — no limits, no Pro, no subscriptions."),
         ("What's New", "Help menu → What's New… opens the changelog. Check for Updates… checks our appcast feed for new versions."),
         ("Updates", "Signoff checks for updates daily when a feed URL is configured. Check manually from About or Help → Check for Updates…"),
-        ("Hide menu bar icon", "Settings → General → Show in menu bar. When hidden, Quit is in that pane (or ⌘Q while Settings is open). Re-open Settings with ⌘, or by launching Signoff again. The app stays Dock-less.")
+        ("Quit", "Settings → General → Quit, or ⌘Q while Settings is open. The menu bar power icon also quits. Signoff stays Dock-less and runs in the background until you quit."),
+        ("Hide menu bar icon", "Settings → General → Show in menu bar. When hidden, quit via Settings → General or ⌘Q while Settings is open. Re-open Settings with ⌃⌘, or by launching Signoff again.")
         ]
     }
 
