@@ -2,17 +2,24 @@ class Signoff < Formula
   desc "Witty email signoffs generated on-device via Apple Foundation Models"
   homepage "https://github.com/arpituppal2/Signoff"
   url "https://github.com/arpituppal2/Signoff/releases/download/v10.0/Signoff.dmg"
-  sha256 "380cec669835be3b6b7558ea06a7817bff7d906366802692110e23ded5317ff0" # Will be updated after release assets are uploaded
+  sha256 "52513ba757bd3a4908565fdd222c6c690f45e1cda40d7fdc33e5bf7d6942a9db"
   version "10.0"
   license "MIT"
 
-  depends_on macos: ">= :sequoia"
+  # Requires macOS 15 (Sequoia) or later for Apple Foundation Models
+  depends_on macos: ">= 15"
 
   def install
-    # Mount the DMG and copy the .app to /Applications
-    system "hdiutil", "attach", cached_download, "-nobrowse", "-quiet", "-mountpoint", "/tmp/signoff-dmg"
-    system "cp", "-R", "/tmp/signoff-dmg/Signoff.app", "/Applications/"
-    system "hdiutil", "detach", "/tmp/signoff-dmg", "-quiet"
+    # Use diskutil for macOS 26+ compatibility
+    system "diskutil", "image", "attach", "--mountOptions", "nobrowse,readOnly", cached_download
+    # Find the mounted volume
+    volumes = Dir.glob("/Volumes/Signoff*")
+    if volumes.empty?
+      raise "Failed to mount DMG"
+    end
+    mount_point = volumes.first
+    system "cp", "-R", "#{mount_point}/Signoff.app", "/Applications/"
+    system "diskutil", "image", "detach", mount_point
   end
 
   def caveats

@@ -30,7 +30,6 @@ public struct SignoffMenuContent: View {
 
     // Splash screen animation state
     @State private var showSplash = !Self.hasLoadedSplash
-    @State private var splashPhase: SplashPhase = .idle
 
     @State private var dismissedFMCTA = false
 
@@ -45,8 +44,6 @@ public struct SignoffMenuContent: View {
         ZStack {
             if showHistory {
                 HistoryPageView(onBack: { showHistory = false })
-                    .frame(width: 580)
-                    .frame(minHeight: 480)
                     .background(popoverGlass)
             } else {
                 mainSurface
@@ -78,6 +75,7 @@ public struct SignoffMenuContent: View {
                 .overlay(Brand.Surface.divider(for: scheme))
             composeColumn
         }
+        .padding(Brand.Layout.spacingL)
         .frame(minWidth: 460, idealWidth: 500, maxWidth: 620, minHeight: 294, idealHeight: 322)
         .background(popoverGlass)
         .task {
@@ -105,6 +103,10 @@ public struct SignoffMenuContent: View {
             selectedBucketTint.opacity(0.06)
         }
         .background(.regularMaterial)
+        .overlay(
+            RoundedRectangle(cornerRadius: Brand.Layout.radiusM, style: .continuous)
+                .stroke(Brand.Surface.divider(for: scheme), lineWidth: Brand.Layout.borderWeight)
+        )
     }
 
     /// The selected bucket's accent, or the brand neutral if nothing is selected.
@@ -356,37 +358,40 @@ public struct SignoffMenuContent: View {
 // MARK: - Splash
 
 /// Reveal splash overlay — a quick brand moment with write/unwrite animation.
-/// Phase 1: draw the signature on (0.55s).
-/// Phase 2: hold the completed symbol (0.1s).
-/// Phase 3: unwrite/erase the signature (0.45s).
-/// Phase 4: fade the whole splash out (0.2s) — the background + glyph dissolve together.
-private enum SplashPhase { case idle, drawing, holding, unwriting, fading }
-
+/// Phase 1: drawOn (0.55s) → Phase 2: hold (0.15s) → Phase 3: drawOff (0.45s) → Phase 4: fade (0.2s)
+/// Total ~1.35s. Background is fully opaque to prevent the EmptyDelightView signature
+/// from showing through next to the splash glyph.
 private struct SplashOverlay: View {
     @Environment(\.colorScheme) private var scheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Binding var showSplash: Bool
 
-    @State private var phase: SplashPhase = .idle
-    @State private var drawProgress: CGFloat = 0
-    @State private var backgroundOpacity: Double = 1
+    @State private var drawOnActive = true
+    @State private var drawOffActive = false
+    @State private var splashOpacity: Double = 1.0
 
     var body: some View {
         ZStack {
-            // Fully opaque background — covers EmptyDelightView's signature completely
+            // Solid opaque background — this kills the double-signature bleed-through
             Color(nsColor: .windowBackgroundColor)
-                .opacity(backgroundOpacity)
                 .ignoresSafeArea()
 
-            // Signature glyph with custom draw animation
-            SignatureDrawView(progress: drawProgress)
-                .font(.system(size: 64, weight: .semibold))
-                .foregroundStyle(Brand.ember(for: scheme))
-                .opacity(backgroundOpacity)
+            VStack(spacing: Brand.Layout.spacingS) {
+                Image(systemName: "signature")
+                    .font(.system(size: 56, weight: .semibold))
+                    .foregroundStyle(Brand.ember(for: scheme))
+                    .symbolEffect(.drawOn.individually, options: .speed(1.5), isActive: drawOnActive)
+                    .symbolEffect(.drawOff.individually, options: .speed(1.5), isActive: drawOffActive)
+
+                Text("Signoff")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(Brand.Ink.tertiary(for: scheme))
+                    .opacity(0.7)
+            }
+            .opacity(splashOpacity)
         }
-        // Fill entire popover so the glyph centers in the full area, not just compose column
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .zIndex(10) // Above everything
+        .zIndex(10)
         .onAppear { runSplashSequence() }
     }
 
@@ -397,111 +402,23 @@ private struct SplashOverlay: View {
             return
         }
 
-        phase = .drawing
-        // Phase 1: Draw on (0.55s) — animate progress 0 → 1
-        withAnimation(.easeInOut(duration: 0.55)) {
-            drawProgress = 1
-        }
+        // Phase 1: drawOn (already active via @State default = true)
+        // Phase 2 — after drawOn completes (0.55s), hold (0.15s), then start drawOff
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.55 + 0.15) {
+            drawOnActive = false
+            drawOffActive = true
 
-        // Phase 2: Hold (0.1s)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.55) {
-            phase = .holding
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                // Phase 3: Unwrite (0.45s) — animate progress 1 → 0
-                phase = .unwriting
-                withAnimation(.easeInOut(duration: 0.45)) {
-                    drawProgress = 0
+            // Phase 4 — after drawOff (0.45s), fade out entire splash
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
+                withAnimation(.easeOut(duration: 0.2)) {
+                    splashOpacity = 0.0
                 }
-
-                // Phase 4: Fade out background + glyph together (0.2s)
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
-                    phase = .fading
-                    withAnimation(.easeOut(duration: 0.2)) {
-                        backgroundOpacity = 0
-                    }
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                        showSplash = false
-                        SignoffMenuContent.hasLoadedSplash = true
-                    }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                    showSplash = false
+                    SignoffMenuContent.hasLoadedSplash = true
                 }
             }
         }
-    }
-}
-
-/// Custom signature draw animation — draws the signature path progressively
-private struct SignatureDrawView: View {
-    let progress: CGFloat // 0 = invisible, 1 = fully drawn
-
-    var body: some View {
-        // Use a custom shape that animates strokeEnd for the signature glyph
-        // We approximate with a Path that mimics the SF Symbol "signature"
-        Canvas { context, size in
-            let rect = CGRect(x: 0, y: 0, width: size.width, height: size.height)
-            let path = signaturePath(in: rect)
-            let totalLength = pathLength(path)
-            context.stroke(
-                Path(path.cgPath),
-                with: .color(.primary),
-                style: StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round, dash: [totalLength * (1 - progress), totalLength], dashPhase: 0)
-            )
-        }
-        .overlay(
-            Image(systemName: "signature")
-                .font(.system(size: 64, weight: .semibold))
-                .opacity(0) // Hidden, just for layout
-        )
-    }
-
-    private func signaturePath(in rect: CGRect) -> Path {
-        var path = Path()
-        let w = rect.width
-        let h = rect.height
-        let cx = w / 2
-        let cy = h / 2
-
-        // Approximate "signature" glyph as a flowing cursive-like path
-        // Scaled to fit in the rect with padding
-        let scale = min(w, h) / 64.0
-        let px: (CGFloat, CGFloat) -> CGPoint = { x, y in
-            CGPoint(x: cx + x * scale, y: cy + y * scale)
-        }
-
-        // Signature-like flowing strokes
-        path.move(to: px(-18, 8))
-        path.addCurve(to: px(-6, -6), control1: px(-10, 2), control2: px(-8, -2))
-        path.addCurve(to: px(6, 4), control1: px(-4, -10), control2: px(2, 0))
-        path.addCurve(to: px(18, -8), control1: px(10, 8), control2: px(14, -4))
-
-        path.move(to: px(-12, 4))
-        path.addCurve(to: px(0, -10), control1: px(-6, 0), control2: px(-4, -6))
-        path.addCurve(to: px(12, 2), control1: px(4, -14), control2: px(8, -2))
-
-        path.move(to: px(-6, -2))
-        path.addCurve(to: px(18, 10), control1: px(2, 2), control2: px(12, 6))
-
-        return path
-    }
-
-    private func pathLength(_ path: Path) -> CGFloat {
-        // Approximate path length by sampling points along the path
-        var length: CGFloat = 0
-        var previousPoint: CGPoint? = nil
-        path.forEach { element in
-            switch element {
-            case .move(to: let p), .line(to: let p), .curve(to: let p, control1: _, control2: _), .quadCurve(to: let p, control: _):
-                if let prev = previousPoint {
-                    let dx = p.x - prev.x
-                    let dy = p.y - prev.y
-                    length += sqrt(dx * dx + dy * dy)
-                }
-                previousPoint = p
-            case .closeSubpath:
-                // Close subpath doesn't add a new point
-                break
-            }
-        }
-        return max(length, 1)
     }
 }
 

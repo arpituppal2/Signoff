@@ -13,7 +13,7 @@ import ApplicationServices
 /// Crash fix: the previous version force-unwrapped `CFTypeRef?` references
 /// (`ref! as! AXValue`) after only checking `ref != nil`. When AX returned `nil`
 /// under an untrusted or non-text state, that crashed generation (`EXC_BAD_ACCESS`).
-/// We now optional-bind every ref, so an empty AX state degrades to `nil` instead.
+/// We now safely handle all AX state transitions and return `nil` instead of crashing.
 @MainActor
 public final class CaretLocator {
     public static let shared = CaretLocator()
