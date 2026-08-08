@@ -46,3 +46,7 @@ Signoff-*.dmg
 # Standard Swift Package Manager exclusions
 .swiftpm/
 Package.resolved
+
+# Local build/test artifacts — never commit
+/build/
+/default.profraw
