@@ -2,7 +2,7 @@ class Signoff < Formula
   desc "Witty email signoffs generated on-device via Apple Foundation Models"
   homepage "https://github.com/arpituppal2/Signoff"
   url "https://github.com/arpituppal2/Signoff/releases/download/v1.0.0/Signoff.dmg"
-  sha256 "2e7b81d475126b7ffe026ebfbab406f9bc2ae8f9f10e56f8c5c181ec05ca1688"
+  sha256 "b4ab42fbd32d757062a0abbc6896c6100065c9f92c8c7b89bca27aa9b2a83714"
   version "1.0.0"
   license "MIT"
 
