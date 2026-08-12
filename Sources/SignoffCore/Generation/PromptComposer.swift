@@ -215,7 +215,17 @@ public enum PromptComposer: Sendable {
         // (observed 5/20 FAILs at window=12). A 6-window still prevents
         // back-to-back repetition (the consecutive-rut behavior we care
         // about) while leaving the model room to generate by iteration 10.
-        // The validator's recentWindow uses the SAME 6 — keep them in sync.
+        //
+        // This is intentionally NARROWER than the validator's rut-comparison
+        // window (SignoffQualityValidator uses suffix(12) for Jaccard +
+        // opening/closing fingerprints). The two serve different purposes and
+        // are NOT meant to be equal: the prompt avoid-list tells the MODEL
+        // what not to repeat (too big → it can't generate at all → exhaustion),
+        // while the validator window enforces no-similarity against a broader
+        // recent burst (catches a rut reappearing within 12 outputs). The
+        // model doesn't need to see items 7-12 to avoid them — it rarely
+        // regenerates a line similar to an 8-old output while also dodging the
+        // last 6, and when it does the validator catches it.
         let avoid = recentTexts
             .suffix(6)
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
