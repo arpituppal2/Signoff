@@ -253,13 +253,24 @@ enum ProviderResponseGuard {
 
     @available(macOS 26, *)
     static func temperature(for context: ProviderGenerateContext) -> Double {
-        // Explicit per-bucket temperature (avoids dynamic toneValue fallthrough):
+        // Explicit per-bucket temperature (avoids dynamic toneValue fallthrough).
+        // Switches on the actual BucketID rawValue (see Models/Bucket.swift).
         // standard (Normal): 0.8  — creative, varied
         // professional: 0.3       — constrained, consistent
-        // cynical (Unhinged): 0.6 — edgy but controlled
+        // unhinged (Cynical): 0.6 — edgy but controlled. Lower than standard on
+        //   purpose: the on-device 3B model drifts into noun-collision ruts and
+        //   opener-fixation under high entropy, and the unhinged prompt + 13
+        //   validator rules exist precisely to catch that drift. Running at 0.8
+        //   (the prior default, reached only because the case below read
+        //   "cynical" — which matched no bucket — so every unhinged generation
+        //   fell through to `default`) left the model at maximum entropy, which
+        //   raised per-attempt rejection pressure and made 12-attempt
+        //   exhaustion (the documented failure mode) more likely. 0.6 keeps the
+        //   model closer to the register few-shot examples; register-cycling +
+        //   the validator's dedup/rut fingerprints handle diversity.
         switch context.bucketId {
         case "professional": return 0.3
-        case "cynical": return 0.6
+        case "unhinged": return 0.6
         case "standard": return 0.8
         default: return 0.8 // fallback to standard
         }
