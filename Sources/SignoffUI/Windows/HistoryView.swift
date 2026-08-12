@@ -20,12 +20,22 @@ public struct HistoryListContent: View {
     /// Empty-state generate action. When nil, the empty state shows no button.
     var onGenerate: (() -> Void)?
 
+    /// Top-right header action that opens the detailed History view in
+    /// Settings — the command-icon button opposite the back chevron at
+    /// top-left. When nil, the button is hidden. Pass nil from the
+    /// Settings → History tab itself (the button would be redundant
+    /// "open what's already open") and from any host that shouldn't surface it.
+    var onOpenSettingsHistory: (() -> Void)?
+
     @State private var showDeleteConfirm = false
     @State private var generationToDelete: SignoffGeneration?
 
-    public init(onBack: (() -> Void)? = nil, onGenerate: (() -> Void)? = nil) {
+    public init(onBack: (() -> Void)? = nil,
+                onGenerate: (() -> Void)? = nil,
+                onOpenSettingsHistory: (() -> Void)? = nil) {
         self.onBack = onBack
         self.onGenerate = onGenerate
+        self.onOpenSettingsHistory = onOpenSettingsHistory
     }
 
     public var body: some View {
@@ -103,17 +113,42 @@ public struct HistoryListContent: View {
 
             Spacer()
 
-            if !appState.recentGenerations.isEmpty {
-                Button {
-                    generationToDelete = nil // nil = clear all
-                    showDeleteConfirm = true
-                } label: {
-                    Text("Clear All")
-                        .font(Brand.Typography.caption1.weight(.medium))
-                        .foregroundStyle(Color.red.opacity(0.85))
+            // Trailing cluster: "Clear All" (when history non-empty) sits next
+            // to the command-icon button that opens the detailed History view in
+            // Settings — opposite the back button at top-left. The command
+            // button is wired only by hosts where it's meaningful (popover,
+            // standalone window); the Settings → History tab passes nil so it
+            // doesn't render a redundant "open what's already open" button.
+            HStack(spacing: Brand.Layout.spacingS) {
+                if !appState.recentGenerations.isEmpty {
+                    Button {
+                        generationToDelete = nil // nil = clear all
+                        showDeleteConfirm = true
+                    } label: {
+                        Text("Clear All")
+                            .font(Brand.Typography.caption1.weight(.medium))
+                            .foregroundStyle(Color.red.opacity(0.85))
+                    }
+                    .buttonStyle(.plain)
+                    .help("Clear entire history")
                 }
-                .buttonStyle(.plain)
-                .help("Clear entire history")
+
+                if let onOpenSettingsHistory {
+                    Button {
+                        NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .now)
+                        onOpenSettingsHistory()
+                    } label: {
+                        Image(systemName: "command")
+                            .font(.system(size: 13, weight: .medium))
+                            .frame(width: 28, height: 28)
+                            .foregroundStyle(Brand.Ink.secondary(for: scheme))
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .help("Open detailed History in Settings")
+                    .accessibilityLabel("Open detailed History in Settings")
+                    .accessibilityHint("Opens the Settings window at the History tab")
+                }
             }
         }
         .padding(.horizontal, Brand.Layout.spacingM)
@@ -181,7 +216,16 @@ public struct HistoryView: View {
     public var body: some View {
         HistoryListContent(
             onBack: { dismiss() },
-            onGenerate: { Task { await appState.generateNow() } }
+            onGenerate: { Task { await appState.generateNow() } },
+            onOpenSettingsHistory: {
+                // The Settings-context window is alive from launch
+                // (MenuBarLabelView opens it once), so posting the routed
+                // notification brings up Settings at the History tab — then
+                // dismiss this standalone window.
+                NSApp.activate(ignoringOtherApps: true)
+                NotificationCenter.default.post(name: .openSettingsShortcutTriggered, object: SettingsPane.history)
+                dismiss()
+            }
         )
         .frame(width: 420, height: 560)
         .background(.regularMaterial)
@@ -229,7 +273,15 @@ private struct HistoryRowView: View {
                     )
             }
 
-            // Text and metadata
+            // Text + metadata. `maxWidth: .infinity` lets this stack claim the
+            // full row width so the signoff wraps wide and the trash sits at the
+            // true trailing edge. The prior `Spacer(minLength: 0)` plus an
+            // invisible `.opacity(0)` delete button collapsed rows to ~60%:
+            // the flexible Spacer stole the trailing width and SwiftUI proposed
+            // only the Text's narrow intrinsic width to this stack, so the
+            // signoff wrapped early and the row read as bunched-left. No Spacer
+            // and no invisible duplicate now — the trash is a real, always-
+            // present trailing sibling.
             VStack(alignment: .leading, spacing: 2) {
                 Text(generation.text)
                     .font(Brand.Typography.body)
@@ -239,10 +291,12 @@ private struct HistoryRowView: View {
 
                 feedbackRow
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
 
-            Spacer(minLength: 0)
-
-            // Delete button (subtle, brighter on hover via overlay below)
+            // Delete — a real trailing sibling. Subtly always-visible at 30%
+            // so it's discoverable without dominating the row (the prior
+            // `.onHover` was a no-op and the overlay was a cheat for the same
+            // effect, which the simpler layout no longer needs).
             Button {
                 onDelete(generation)
             } label: {
@@ -254,7 +308,7 @@ private struct HistoryRowView: View {
             }
             .buttonStyle(.plain)
             .help("Delete from history")
-            .opacity(0)
+            .opacity(0.3)
         }
         .padding(.horizontal, Brand.Layout.spacingS)
         .padding(.vertical, Brand.Layout.spacingXS)
@@ -262,27 +316,16 @@ private struct HistoryRowView: View {
             RoundedRectangle(cornerRadius: Brand.Layout.radiusS, style: .continuous)
                 .fill(Color.clear)
         )
-        .onHover { _ in }
         .animation(.easeInOut(duration: 0.15), value: false)
-        // We cheat hover visibility by making the trash subtly always visible
-        // on the row's trailing overlay.
-        .overlay(alignment: .trailing) {
-            Button {
-                onDelete(generation)
-            } label: {
-                Image(systemName: "trash")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(Color.red.opacity(0.7))
-                    .frame(width: 24, height: 24)
-            }
-            .buttonStyle(.plain)
-            .help("Delete from history")
-            .opacity(0.3)
-        }
     }
 
-    /// Metadata + thumbs feedback row. Thumbs are real: they persist favorite
-    /// status which weights the predictive-register picker (AppState:300).
+    /// Metadata + thumbs feedback row. The timestamp and "On-device" provider
+    /// badge were removed: the app runs 100% locally (the badge stated the
+    /// obvious) and a relative timestamp is noise on a generation list. The
+    /// color-coded bucket name stays — it gives voice context that the leading
+    /// glyph alone can't — and the thumbs stay, since they persist favorite
+    /// status which weights the predictive-register picker
+    /// (AppState.preferredRegister).
     @ViewBuilder
     private var feedbackRow: some View {
         HStack(spacing: Brand.Layout.spacingXS) {
@@ -291,22 +334,6 @@ private struct HistoryRowView: View {
                     .font(Brand.Typography.caption2.weight(.medium))
                     .foregroundStyle(Brand.accent(for: bucket.id, scheme: scheme))
             }
-
-            Text(generation.createdAt, style: .relative)
-                .font(Brand.Typography.caption2)
-                .foregroundStyle(Brand.Ink.tertiary(for: scheme))
-
-            Text("·")
-                .font(Brand.Typography.caption2)
-                .foregroundStyle(Brand.Ink.tertiary(for: scheme))
-
-            Text(GenerationProviderKind(rawValue: generation.providerRaw)?.badgeTitle ?? "On-device")
-                .font(Brand.Typography.caption2.weight(.medium))
-                .foregroundStyle(Brand.Ink.tertiary(for: scheme))
-
-            Text("·")
-                .font(Brand.Typography.caption2)
-                .foregroundStyle(Brand.Ink.tertiary(for: scheme))
 
             thumbsButton(liked: true, filled: generation.isFavorite)
             thumbsButton(liked: false, filled: false)

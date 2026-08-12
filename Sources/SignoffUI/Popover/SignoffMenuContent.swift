@@ -121,7 +121,8 @@ public struct SignoffMenuContent: View {
                     }
                     NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .now)
                     Task { await appState.generateNow(shouldAutoPaste: true) }
-                }
+                },
+                onOpenSettingsHistory: openHistoryInSettings
             )
             .frame(maxWidth: .infinity, alignment: .leading)
             .transition(routeTransition)
@@ -254,6 +255,40 @@ public struct SignoffMenuContent: View {
         HStack(spacing: Brand.Layout.spacingS) {
             Spacer(minLength: 0)
 
+            // Footer discoverability — shows ONLY when the user hasn't written
+            // an "After signoff" footer yet (the rich-text block appended below
+            // every generated signoff; edited in Settings → General → "After
+            // signoff"). A new user has no footer, and nothing in the popover
+            // surfaces that the feature exists, so this affordance routes them
+            // straight to the editor. Once a footer is set, the button
+            // vanishes (the footer is already doing its job — no chrome).
+            if !hasAfterSignoffFooter {
+                Button {
+                    NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .now)
+                    NSApp.activate(ignoringOtherApps: true)
+                    NotificationCenter.default.post(name: .openSettingsShortcutTriggered, object: nil)
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "plus.rectangle.on.rectangle")
+                            .font(.system(size: 12, weight: .medium))
+                        Text("Add footer")
+                            .font(Brand.Typography.caption1.weight(.medium))
+                    }
+                    .foregroundStyle(Brand.Ink.secondary(for: scheme))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .stroke(Brand.Surface.divider(for: scheme), lineWidth: Brand.Layout.hairline)
+                    )
+                    .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .help("No footer set — add an \"After signoff\" block (appended below every signoff)")
+                .accessibilityLabel("Add footer")
+                .accessibilityHint("Opens Settings to add the After-signoff footer block")
+            }
+
             // Icon-only utility buttons (trailing)
             UtilityIconButton(
                 symbol: "clock.arrow.circlepath",
@@ -277,6 +312,14 @@ public struct SignoffMenuContent: View {
         }
     }
 
+    /// True when the user has written a non-empty "After signoff" footer
+    /// (the rich-text block in Settings → General, appended below every
+    /// generated signoff). Drives the popover's footer-discoverability
+    /// affordance: show "Add footer" only while none is set.
+    private var hasAfterSignoffFooter: Bool {
+        !appState.settings.afterSignoffText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
     /// One-shot: open the hidden Settings-context window so its
     /// `@Environment(\.openSettings)` + `.onReceive` stay live for the app
     /// lifetime. Without this, `SettingsContextView` never instantiates and
@@ -298,6 +341,23 @@ public struct SignoffMenuContent: View {
         ensureSettingsContextWindow()
         NSApp.activate(ignoringOtherApps: true)
         NotificationCenter.default.post(name: .openSettingsShortcutTriggered, object: nil)
+    }
+
+    /// Opens the Settings window routed to the History tab — the "detailed
+    /// view" affordance from the popover's compact in-place history (the
+    /// command-icon button opposite the back chevron). The Settings-context
+    /// window is alive from launch (MenuBarLabelView opens it), so we just
+    /// activate and post the routed notification; `SettingsView` reads
+    /// `note.object as? SettingsPane` and switches to the History tab. Flips
+    /// the popover back to `.main` so it's clean when the user returns.
+    private func openHistoryInSettings() {
+        NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .now)
+        ensureSettingsContextWindow()
+        NSApp.activate(ignoringOtherApps: true)
+        NotificationCenter.default.post(name: .openSettingsShortcutTriggered, object: SettingsPane.history)
+        withAnimation(Brand.Motion.safe(.easeInOut(duration: 0.2), reduceMotion: reduceMotion)) {
+            route = .main
+        }
     }
 
     private func openHistoryInPopover() {
