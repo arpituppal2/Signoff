@@ -35,6 +35,14 @@ public struct SettingsView: View {
     @State private var afterSignoffHeight: CGFloat = 160
     @StateObject private var footerFormatter = RichTextFormatterController()
 
+    /// Deep-link scroll anchor requested by an incoming
+    /// `.openSettingsShortcutTriggered` notification (e.g. the popover's "Add
+    /// footer" button posts `userInfo["scrollTo"]: "afterSignoff"`). Cleared
+    /// once `generalPane` has scrolled to the anchor — drives `ScrollViewReader`
+    /// in `generalPane` so a routed open lands the user on the right section,
+    /// not just the right tab.
+    @State private var pendingScrollAnchor: String?
+
     // Accessibility settings via NSWorkspace (no SwiftUI env keys on macOS yet)
     @State private var reduceTransparency = NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency
     @State private var increaseContrast = NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast
@@ -89,6 +97,7 @@ public struct SettingsView: View {
     // MARK: - General
 
     private var generalPane: some View {
+        ScrollViewReader { proxy in
         Form {
             Section {
                 Picker("Color scheme", selection: settingsStringBinding(\.colorSchemeRaw)) {
@@ -128,6 +137,12 @@ public struct SettingsView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+            // Anchor for the popover's "Add footer" deep-link
+            // (`.openSettingsShortcutTriggered` with `userInfo["scrollTo"]:
+            // "afterSignoff"`). `ScrollViewReader` in `generalPane` scrolls
+            // here so the routed open lands the user on the editor, not just
+            // the General tab.
+            .id("afterSignoff")
 
             Section {
                 Toggle("Replace previous signoff on retrigger", isOn: settingsBoolBinding(\.rapidReplaceEnabled))
@@ -168,6 +183,34 @@ public struct SettingsView: View {
         }
         .formStyle(.grouped)
         .navigationTitle(SettingsPane.general.title)
+        // Scroll to the deep-link anchor when the General pane appears (cold
+        // open, or tab-switch INTO General) and whenever a new anchor request
+        // arrives while already on General. `pendingScrollAnchor` is set by
+        // `applyPaneFromNotification` from a routed `.openSettingsShortcutTriggered`
+        // (popover "Add footer").
+        .onAppear { scrollToAddFooterIfNeeded(proxy) }
+        .onChange(of: pendingScrollAnchor) { _, _ in
+            scrollToAddFooterIfNeeded(proxy)
+        }
+        }
+    }
+
+    /// Consume `pendingScrollAnchor == "afterSignoff"` (set by a routed
+    /// `.openSettingsShortcutTriggered` from the popover's "Add footer"
+    /// button) and scroll the General form to the After-signoff editor.
+    /// Two hops: the immediate one covers an already-open window; the delayed
+    /// one covers a cold open where the Form hasn't laid out sections on the
+    /// first runloop pass. Clears the anchor so a later plain Settings open
+    /// (⌘,) doesn't re-scroll.
+    private func scrollToAddFooterIfNeeded(_ proxy: ScrollViewProxy) {
+        guard pendingScrollAnchor == "afterSignoff" else { return }
+        pendingScrollAnchor = nil
+        proxy.scrollTo("afterSignoff", anchor: .top)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+            withAnimation(.easeInOut(duration: 0.2)) {
+                proxy.scrollTo("afterSignoff", anchor: .top)
+            }
+        }
     }
 
     private var showsStatusItemBinding: Binding<Bool> {
@@ -651,6 +694,14 @@ public struct SettingsView: View {
     }
 
     private func applyPaneFromNotification(_ note: Notification?) {
+        // Deep-link scroll anchor (e.g. popover "Add footer" posts
+        // `userInfo["scrollTo"]: "afterSignoff"`). Captured here and consumed
+        // by `generalPane`'s `ScrollViewReader` — the pane switch below gets
+        // the user onto the right tab, then the reader scrolls to the section.
+        if let anchor = note?.userInfo?["scrollTo"] as? String {
+            pendingScrollAnchor = anchor
+        }
+
         if let raw = note?.userInfo?["pane"] as? String {
             lastPaneRaw = SettingsPane.resolve(raw).rawValue
             return

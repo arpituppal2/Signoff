@@ -255,18 +255,28 @@ public struct SignoffMenuContent: View {
         HStack(spacing: Brand.Layout.spacingS) {
             Spacer(minLength: 0)
 
-            // Footer discoverability — shows ONLY when the user hasn't written
-            // an "After signoff" footer yet (the rich-text block appended below
-            // every generated signoff; edited in Settings → General → "After
-            // signoff"). A new user has no footer, and nothing in the popover
-            // surfaces that the feature exists, so this affordance routes them
-            // straight to the editor. Once a footer is set, the button
-            // vanishes (the footer is already doing its job — no chrome).
-            if !hasAfterSignoffFooter {
+            // Footer discoverability — shows ONLY when (a) the Footer voice is
+            // the selected voice AND (b) the user hasn't written an "After
+            // signoff" footer yet. The "After signoff" block (edited in
+            // Settings → General → "After signoff") is appended below every
+            // generated signoff; it pairs with this Footer voice, so the
+            // affordance to add one lives under THAT voice — not on every
+            // popover page next to History/Settings/Quit (those stay global).
+            // Once a footer is set, the button vanishes (the footer is already
+            // doing its job — no chrome).
+            if appState.isFooterVoiceSelected && !hasAfterSignoffFooter {
                 Button {
                     NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .now)
+                    ensureSettingsContextWindow()
                     NSApp.activate(ignoringOtherApps: true)
-                    NotificationCenter.default.post(name: .openSettingsShortcutTriggered, object: nil)
+                    // Deep-link: General pane, scroll to the "After signoff"
+                    // section. SettingsView reads `object as? SettingsPane`
+                    // for the pane and `userInfo["scrollTo"]` for the anchor.
+                    NotificationCenter.default.post(
+                        name: .openSettingsShortcutTriggered,
+                        object: SettingsPane.general,
+                        userInfo: ["scrollTo": "afterSignoff"]
+                    )
                 } label: {
                     HStack(spacing: 4) {
                         Image(systemName: "plus.rectangle.on.rectangle")
@@ -314,8 +324,9 @@ public struct SignoffMenuContent: View {
 
     /// True when the user has written a non-empty "After signoff" footer
     /// (the rich-text block in Settings → General, appended below every
-    /// generated signoff). Drives the popover's footer-discoverability
-    /// affordance: show "Add footer" only while none is set.
+    /// generated signoff). Half of the popover's footer-discoverability
+    /// gate: the "Add footer" button shows only when `isFooterVoiceSelected`
+    /// AND no footer is set yet.
     private var hasAfterSignoffFooter: Bool {
         !appState.settings.afterSignoffText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }

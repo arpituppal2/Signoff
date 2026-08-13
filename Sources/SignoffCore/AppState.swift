@@ -62,6 +62,15 @@ public final class AppState {
         buckets.first { $0.id == selectedBucketId }
     }
 
+    /// True when the selected bucket is the legacy "Custom"/footer voice —
+    /// the persisted id "custom" bucket from an earlier app version (renamed
+    /// to display "Footer" by the launch migration). The popover uses this to
+    /// scope its "Add footer" affordance to the Footer voice only, instead of
+    /// showing it on every popover page.
+    public var isFooterVoiceSelected: Bool {
+        selectedBucketId == "custom"
+    }
+
     private var cancellables = Set<AnyCancellable>()
     /// Guards one-shot cold-start work so `bootstrap()` / `initialize()` are
     /// idempotent for AppIntents and app launch.
@@ -163,6 +172,32 @@ public final class AppState {
             if needsSave {
                 bucket.updatedAt = Date()
             }
+        }
+
+        // One-time display-name rename for the legacy "Custom" bucket. An
+        // earlier app version's `defaultBuckets()` seeded a 4th bucket with
+        // id "custom" and display name "Custom" (sortOrder 3); that enum case
+        // was later removed in the v3 slim, but `AppState.initialize` never
+        // deletes persisted buckets and only re-seeds an empty store — so the
+        // "Custom" row survives in long-lived SwiftData stores and still
+        // appears as a 4th voice in the popover. The user knows this voice as
+        // the "footer" voice (it's the one paired with the "After signoff"
+        // rich-text block), so rename its DISPLAY NAME to "Footer". This does
+        // NOT touch the stored id (no SwiftData identity churn, no history
+        // loss) and preserves any `footerRTFData`/config attached.
+        //
+        // Idempotent without a persisted flag: only mutates a "custom"-id
+        // bucket STILL named exactly "Custom" (the legacy default). If the
+        // user has renamed it themselves (to anything else, including
+        // "Footer"), this no-ops — we never clobber a user's deliberate name.
+        var didRenameCustom = false
+        for bucket in buckets where bucket.id == "custom" && bucket.name == "Custom" {
+            bucket.name = "Footer"
+            bucket.updatedAt = Date()
+            didRenameCustom = true
+        }
+        if didRenameCustom {
+            try? persistence.context.save()
         }
 
         if !buckets.contains(where: { $0.id == selectedBucketId }) {
