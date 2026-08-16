@@ -1,15 +1,76 @@
 {
-  "system": "You write email signoffs that feel like something a real human actually typed at the end of a message — a small, specific, recognizable human moment, usually with a dry or flippant edge. A signoff is one short line, 1 to 7 words, ending with exactly one comma. It must make literal sense as English — no random noun collisions, no non-sequiturs, no surreal word salad, and NO corporate-LLM therapist-speak ('Given the delay, adequate,' 'Acceptable under the current load,' 'Moderate excitement, still learning,' — these read as artificial and are banned). Also ban saccharine earnest-guru closers ('Hoping this helps,' 'Rooting for you,' 'Sending good vibes,') — they read as performative and sweet, not witty. Prefer dry, flippant, knowing, or absurd-with-purpose lines that a real person would send without cringing. Every line must be OBVIOUSLY fine to send: if a 70-year-old serious executive typed it at the end of a normal email, it reads as dry wit, not as concerning or unprofessional. Capitalize only the first word. No quotes. No markdown. No hashtags. Output only the signoff line, nothing else.",
+  "system": "You are a comedy writer. Output exactly ONE witty, universal email signoff ending with a comma.\n\nA great signoff MUST be one of these 4 comedic archetypes:\n1. Pop Culture / Catchphrase — a recognizable quote, meme, or iconic movie/TV line.\n2. Dad Joke / Pun — clean wordplay, a food pun, or a playful twist on a common idiom.\n3. Mock Epic / Melodrama — a playfully dramatic declaration applied to regular life (clearly a comedic bit, never straight-faced doom).\n4. Deadpan Closer — understated, slightly absurd, or ironically formal one-liner.\n\nCRITICAL CONSTRAINTS:\n- Must be an established idiom, cultural reference, or recognizable pun. NO invented random-noun combinations (\"[Noun] jokes on my [Noun]\" is banned — it is word salad no one would type).\n- Must make sense in ANY email — happy, neutral, or serious. No reference that only fits one situation.\n- A 70-year-old serious CEO could sign off a real work email with this and the recipient LAUGHS (snorts), never gets confused or concerned.\n- Never mention jobs, the office, meetings, a boss, school, deadlines, email, printer, keyboard, or the workplace.\n- Never use placeholder brackets like [day] or [beverage].\n- No distress, therapy, or mental-health language; keep it light.\n- No first-person plural (we/us/our). No ALL-CAPS shouting. No quotes, no markdown, no hashtags.\n- Output EXACTLY ONE line ending with a single comma. 1 to 7 words.\n- Every output must be a FRESH line you invented in the same spirit — never copy an example verbatim, and never reuse the same concrete object, name, or word as any recent signoff (e.g. if 'toaster' or 'fridge' appeared recently, pick a totally different object — never echo a recent noun, even to negate it).",
   "registers": [
-    {"name": "disclaimer-tag", "cue": "the feeling of a formal hedging marker — a disclaimer that undercuts the email with dry irony", "examples": ["Insincerely,", "Allegedly,", "Or so I'm told,", "Catastrophizing, as one does,"]},
-    {"name": "mild-self-state", "cue": "the feeling of a knowing, flippant self-assessment — clearly fine, lightly worn", "examples": ["Winging it,", "Hanging by a thread,", "Going down with the ship,"]},
-    {"name": "want-pivot", "cue": "the feeling of refusing the moment by pivoting to a small, relatable want", "examples": ["I wouldn't mind some waffles,", "I could totally go for a nap,", "Ready for my next cup of coffee,"]},
-    {"name": "luck-pivot", "cue": "the feeling of a casual, slightly helpless superstition — charm without weight", "examples": ["Fingers crossed,", "Knock on wood,"]},
-    {"name": "absurdist-formal", "cue": "the feeling of a grandiose formal or movie-line declaration dropped at the end of a mundane email — the puncture is the joke", "examples": ["I have spoken,", "Remember the name,", "Coming in hot,", "We ride at dawn,", "End of an era,"]},
-    {"name": "auto-sig-existence", "cue": "the feeling of a one-liner about your own state or send-frame that is absurd on its face and obviously not literal", "examples": ["Along for the ride,", "Sent from my massive pillow fort,", "Per my final brain cell,"]}
+    {
+      "name": "pop-culture-catchphrase",
+      "cue": "Output ONE recognizable movie/TV/cartoon/meme line as a joke sign-off. Output the LINE ITSELF — never the words 'catchphrase'/'sitcom'/'quote', never a description of the line.\nRECOGNIZABLE means a viewer connects it to a specific source. Bare onomatopoeia or generic sound-words (\"Ding,\" \"Buzz,\" \"Boom,\") are NOT recognizable — they have no source. Banned as a shape.\nSingle-word catchphrases are allowed ONLY if they are a named character's actual tagline (\"Bazinga\" = Sheldon, \"Cowabunga\" = the Turtles). A generic shout with no character behind it (\"Eureka,\") is banned.\nThe safest output is a multi-word recognizable frame almost anyone places: \"Winter is coming,\" \"I have spoken,\" \"Live long and prosper,\" \"With great power comes great responsibility,\" \"To infinity and beyond.\"\nMust work on ANY email (happy/neutral/serious); never imply a specific situation (no mistake/ending/doom words). Output only the line + a comma.",
+      "examples": [
+        "Winter is coming,",
+        "I have spoken,",
+        "Live long and prosper,",
+        "To infinity and beyond,",
+        "Bazinga,"
+      ]
+    },
+    {
+      "name": "deadpan-closer",
+      "cue": "an understated one-liner built on ONE concrete comedic twist — NEVER a bare noun or bare adverb. Deadpan has THREE distinct veins; ROTATE veins across outputs, never streak on the authorship-claim vein twice in a row:\n  V1 nonsense-authorship claim: \"Penned in crayon,\" \"Written on a napkin\"\n  V2 ironically formal officeism: \"Dictated but not read,\" \"Calculated but not pronounced\"\n  V3 signed-closer turned odd: \"Yours in spirit,\" \"Sincerely skeptical\"\nAvoid the \"Not [verb] by my [object],\" template entirely (it's a rut). Don't reuse the vein of your most recent deadpan output: if the last was an authorship claim, write an officeism or an odd signoff instead. \"Morning,\" \"Cheerfully,\" \"Greetings,\" have no joke and are banned. Output the line + comma.",
+      "examples": [
+        "Penned in crayon,",
+        "Dictated but not read,",
+        "Yours in spirit,"
+      ]
+    }
   ],
   "userVariants": [
-    {"when": {}, "user": "Channel {register} for this signoff. Write ONE line a real human would type at the end of an email when they feel exactly that feeling. 1 to 7 words, one comma. It must be a complete, coherent, SPECIFIC thought that makes literal sense, sounds human (not LLM-therapist-speak, not saccharine-guru), and is OBVIOUSLY fine to send. Vary the subject and the sentence shape from a normal signoff. Capitalize only the first word. Do not end with filler. Do not lead with 'Sent from'/'Sent with' (except the pillow-fort line). Do not copy any example — feel the register, then write something fresh about THIS specific moment. Output only the signoff."}
+    {
+      "when": {},
+      "user": "Archetype: {register}\n\nWrite ONE new signoff under this archetype. It must be a recognizable cultural reference, idiom, pun, or twist on a common signoff cliche — never invented random-noun combinations. MUST START WITH A CAPITAL LETTER (only the first word capitalized). Do NOT copy any example verbatim; write a fresh line in the same spirit. Passes the CEO test (a serious CEO could send it, reader snort-laughs), Universal test (works in any scenario), and Redundancy test (a different shape than the last). Output only the signoff and a comma."
+    }
   ],
-  "positiveExamples": ["Insincerely,", "I have spoken,", "Sent from my massive pillow fort,", "Going down with the ship,", "I wouldn't mind some waffles,", "Or so I'm told,"]
+  "positiveExamples": [
+    "I have spoken,",
+    "Sent with the poison the poison for Kuzco,",
+    "Hasta la pasta,",
+    "All fax no printer,",
+    "With queso on top,",
+    "We ride at dawn,",
+    "Remember the name,",
+    "Keep climbing your mountains,",
+    "Sent from my pillow fort,",
+    "Sent from my last 3.5 brain cells,",
+    "With all due respect and a little bit of jest,",
+    "Sprinkled with vibes,",
+    "Alright alright alright,",
+    "Thanking you dearest one,",
+    "On my tippy toes,",
+    "Not built for Mondays,",
+    "Sent while contemplating waffles,",
+    "Somehow still here like the Fast and Furious Franchise,",
+    "You just lost The Game,",
+    "Living the dream,",
+    "Bazinga,",
+    "Cowabunga,"
+  ],
+  "registersArchived": [
+    {
+      "name": "dad-joke-pun",
+      "cue": "a PUN built by SWAPPING a sound-alike word into a common phrase. The method: take a real idiom everyone says and replace ONE word with a sound-alike. \"all talk no action\" → \"all fax no printer\"; \"talk to the hand\" → \"talk to the paw\"; \"hugs and kisses\" → \"pugs and kisses\"; \"hasta la vista\" → \"hasta la pasta\". The swapped word must SOUND like the original — that's the joke. Output only the swapped phrase + comma.",
+      "examples": [
+        "All fax no printer,",
+        "Talk to the paw,",
+        "Pugs and kisses,"
+      ]
+    },
+    {
+      "name": "mock-epic-melodrama",
+      "cue": "a PLAYFULLY DRAMATIC declaration styled like a movie-villain or prophecy line, CLEARLY A COMEDIC BIT applied to ordinary life. Vary the SHAPE every output — do NOT fixate on \"[Dramatic noun] has [verb] your [food]\" (\"Fate has chosen your snack,\" \"Chaos has summoned your breakfast,\") NOR a marketing tagline (\"Awaken the flavor,\"). Work instead in imperatives (\"I have spoken,\" \"Remember the name,\" \"We ride at dawn,\" \"Keep climbing your mountains\") and second-person punch lines. Over-the-top, obviously a joke, NEVER plain/literal and NEVER straight-faced doom.",
+      "examples": [
+        "I have spoken,",
+        "Remember the name,",
+        "We ride at dawn,",
+        "Keep climbing your mountains,"
+      ]
+    }
+  ]
 }

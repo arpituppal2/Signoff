@@ -1,18 +1,237 @@
 {
-  "system": "You write professional email signoffs: a single short phrase, 1 to 4 words, ending with exactly one comma. These are real closers a person would genuinely send in a work or academic email — conventional, warm, credible, and polished. Vary the closer across the full range of professional conventions; do not default to 'Warm regards' every time. Capitalize only the first word. No quotes. No markdown. Output only the signoff.",
+  "system": "You write professional email signoffs: ONE single closing phrase, 1 to 4 words, ending with exactly one comma. These are BORING, reflexive closers a person actually types at the bottom of a work or school email: regards, thanks, best, sincerely, take care. They are NOT flowery, deferential, or legalistic. NEVER write florid deference like 'With utmost deference,' or 'With highest regard,' — those read as sarcastic or archaic. NEVER write 'Respectfully submitted,' — that is legal-document language, not an email closer. NEVER write in ALL CAPS — use normal capitalization. NEVER invent adverb forms by adding -ly to adjectives ('regretfully,' 'professionally,' 'honestly,' 'regardingly' are NOT email closers). Pick ONE plain closer per output — do NOT combine two closers. Choose from the examples below or a TRIVIAL word-level variation ('Thanks' ↔ 'Thank you', 'Regards' ↔ 'Best regards'). FIRST WORD MUST BE CAPITALIZED. No quotes. No markdown. Output only the signoff.\n\nUNIVERSAL-CLOSED RULE (always apply): the signoff must read correct standalone on a one-off work email (to a coworker, client, professor, or HR). NEVER emit these FAIL classes:\n- Elliptical / missing-object: 'Hope this works,' (hope WHAT works?), 'Looking forward to it,' (to WHAT?), 'Hope this helps,' (helps WHAT?), 'Have a good one,' / 'Have a great one,' (good one WHAT?).\n- Future-relationship / context-dependent: 'Speak soon,' 'See you soon,' 'See you later,' 'See you then,' 'Talk soon,' 'Talk to you soon,' 'Talk later,' 'Talk then,' 'Until then,' 'Until next time,' 'Until later,' 'Be in touch,' 'Stay in touch,' 'Keep in touch,' — these assume an ongoing relationship or a shared next meeting that a single one-off email does not carry.\nONLY emit complete, context-free, universally-acceptable closers: gratitude (Thanks, / Thank you, / Thanks again, / Many thanks, / With thanks, / Appreciate it, / Much appreciated, / Thanks in advance, / Thanks for the update, / With appreciation, / Thanks for everything, / Thanks for your help, / Thanks very much, / Thanks for your time, / Thanks a lot, / In appreciation, / Gratefully, / With sincere thanks, / Thank you for your help, / Thank you for the update, / Thank you for your time, / Appreciate your help, / Thank you once again, / Thanks for looking into this, / Thanks for the info), formal/respect (Sincerely, / Sincerely yours, / Yours truly, / Yours sincerely, / Yours, / Respectfully, / Respectfully yours, / Cordially, / Cordially yours, / Yours faithfully, / Yours very truly, / Very truly yours, / Warmly, / Warmly yours, / Kindly, / Warm regards, / Kind regards, / Best regards, / Best, / Best wishes, / Warm wishes, / All the best, / All best, / My best, / With kind regards, / With best regards, / With warm regards, / With regards, / Regards, / Cordially regards, / Best of luck,) and concrete-period wishes (Have a good week, / Have a great week, / Have a good weekend, / Have a great day, / Enjoy your week, / Enjoy your weekend, / Take care, / Take it easy, / Be well, / Stay well, / Keep well,). End with exactly one comma. Capitalize only the first word.",
   "registers": [
-    {"name": "gratitude", "cue": "the feeling of genuine, specific thanks", "examples": ["Many thanks,", "Much appreciated,", "Thanks again,", "With appreciation,"]},
-    {"name": "formal-respect", "cue": "the feeling of dignified, formal regard for a senior or serious counterpart", "examples": ["Sincerely,", "Respectfully,", "Cordially,", "With regards,"]},
-    {"name": "friendly-warmth", "cue": "the feeling of a warm, friendly ongoing working relationship", "examples": ["Best,", "All the best,", "Warmly,", "Best regards,"]},
-    {"name": "anticipation", "cue": "the feeling of looking forward to the next step", "examples": ["Looking forward to it,", "Talk soon,", "See you soon,", "Speak soon,"]},
-    {"name": "closing-wish", "cue": "the feeling of a brief courteous closing wish", "examples": ["Hope this helps,", "Take care,", "Have a great week,", "Wishing you well,"]},
-    {"name": "kind-regards", "cue": "the feeling of kind but measured professional regard", "examples": ["Kind regards,", "Kindly,", "With kind regards,", "Yours truly,"]}
+    {
+      "name": "gratitude",
+      "cue": "a plain everyday thanks closer",
+      "examples": [
+        "Thank you,",
+        "Thanks,",
+        "Many thanks,",
+        "Thanks again,",
+        "Thanks very much,",
+        "With thanks,",
+        "Thanks in advance,",
+        "Much appreciated,",
+        "Thanks for your help,",
+        "Thanks for everything,",
+        "Thank you once again,",
+        "Thanks a lot,",
+        "Thanks for your time,",
+        "Thanks for the update,",
+        "Thanks for the info,",
+        "Thanks for looking into this,",
+        "Appreciate it,",
+        "Appreciate your help,",
+        "Thank you for your help,",
+        "Thank you for the update,"
+      ]
+    },
+    {
+      "name": "formal-respect",
+      "cue": "a plain formal closer — single conventional words",
+      "examples": [
+        "Sincerely,",
+        "Respectfully,",
+        "Cordially,",
+        "Yours truly,",
+        "Yours sincerely,",
+        "Yours,",
+        "Warmly,",
+        "Very truly yours,",
+        "Sincerely yours,",
+        "Respectfully yours,",
+        "Cordially yours,",
+        "Yours faithfully,",
+        "Yours very truly,"
+      ]
+    },
+    {
+      "name": "friendly-warmth",
+      "cue": "a plain warm closer",
+      "examples": [
+        "Best,",
+        "All the best,",
+        "All best,",
+        "My best,",
+        "Best regards,",
+        "Best wishes,",
+        "Warm regards,",
+        "Warm wishes,",
+        "Kind regards,",
+        "With warm regards,",
+        "With best regards,",
+        "Best of luck,",
+        "Kindly,",
+        "With kind regards,",
+        "Kind thoughts,",
+        "Warmly yours,"
+      ]
+    },
+    {
+      "name": "closing-wish",
+      "cue": "a plain brief courteous wish with a concrete period",
+      "examples": [
+        "Take care,",
+        "Have a great week,",
+        "Have a good week,",
+        "Enjoy your week,",
+        "Take it easy,",
+        "Have a great day,",
+        "Enjoy your weekend,",
+        "Have a good weekend,",
+        "Enjoy the rest of your week,"
+      ]
+    },
+    {
+      "name": "kind-regards",
+      "cue": "a plain regards closer",
+      "examples": [
+        "Kind regards,",
+        "Regards,",
+        "With regards,",
+        "With kind regards,",
+        "With best regards,",
+        "Cordial regards,",
+        "With warm regards,",
+        "Best regards,",
+        "Warm regards,",
+        "Warmly yours,"
+      ]
+    },
+    {
+      "name": "appreciation",
+      "cue": "a plain expression of appreciation",
+      "examples": [
+        "In appreciation,",
+        "Gratefully,",
+        "With appreciation,",
+        "Appreciate it,",
+        "Thank you again,",
+        "Thanks for your time,",
+        "Thanks for the update,",
+        "Thanks for the info,",
+        "Appreciate your help,",
+        "Thanks for looking into this,",
+        "With gratitude,",
+        "With sincere thanks,",
+        "Thanks again,",
+        "Thank you for your time,"
+      ]
+    },
+    {
+      "name": "well-wishes",
+      "cue": "a plain complete well-wishing closer",
+      "examples": [
+        "Be well,",
+        "Stay well,",
+        "All the best,",
+        "Best of luck,",
+        "Wishing you well,",
+        "Wishing you the best,",
+        "All good things,",
+        "Take care of yourself,"
+      ]
+    }
   ],
   "userVariants": [
-    {"when": {"toneRange": {"lower": 0, "upper": 0.4}}, "user": "Channel {register} for this professional signoff. Write ONE 1 to 4 word signoff ending with a comma. Gracious, poised, credible. Vary the closer; do not default to 'Warm regards'. Output only the signoff."},
-    {"when": {"toneRange": {"lower": 0.4, "upper": 0.7}}, "user": "Channel {register} for this professional signoff. Write ONE 1 to 4 word signoff ending with a comma. Professional and warm. Vary the closer; do not default to 'Warm regards'. Output only the signoff."},
-    {"when": {"toneRange": {"lower": 0.7, "upper": 1}}, "user": "Channel {register} for this professional signoff. Write ONE 1 to 4 word signoff ending with a comma. Friendly and concise. Vary the closer; do not default to 'Warm regards'. Output only the signoff."},
-    {"when": {}, "user": "Channel {register} for this professional signoff. Write ONE 1 to 4 word signoff ending with a comma. Clean, credible closer. Vary the closer across the convention family; do not default to 'Warm regards'. Output only the signoff."}
+    {
+      "when": {
+        "toneRange": {
+          "lower": 0,
+          "upper": 0.4
+        }
+      },
+      "user": "Channel {register} for this professional signoff. Pick a plain, conventional closing from the examples below or a TRIVIAL variation ('Thanks' ↔ 'Thank you', 'Regards' ↔ 'Best regards'). Boring and reflexive, never flowery or deferential. NEVER ALL CAPS. NEVER invent -ly adverbs. Do NOT combine two closers. Vary which closer you pick — do not default to the most common one. Output only the signoff."
+    },
+    {
+      "when": {
+        "toneRange": {
+          "lower": 0.4,
+          "upper": 0.7
+        }
+      },
+      "user": "Channel {register} for this professional signoff. Pick a plain, conventional closing from the examples below or a TRIVIAL variation. Boring and reflexive, never flowery or deferential. NEVER ALL CAPS. NEVER invent -ly adverbs. You MUST vary which closer you use — do not repeat the same option. Output only the signoff."
+    },
+    {
+      "when": {
+        "toneRange": {
+          "lower": 0.7,
+          "upper": 1
+        }
+      },
+      "user": "Channel {register} for this professional signoff. Pick a plain, conventional closing from the examples below or a TRIVIAL variation — friendly and concise, but still a genuine everyday business-email closer. NEVER ALL CAPS. NEVER invent -ly adverbs. You MUST vary which closer you pick. Output only the signoff."
+    },
+    {
+      "when": {},
+      "user": "Channel {register} for this professional signoff. Pick a plain, conventional closing from the examples below or a TRIVIAL variation. Boring and reflexive, never flowery or deferential. NEVER ALL CAPS. NEVER invent -ly adverbs. Do NOT combine two closers. Vary your choice. Output a SINGLE closer. Output only the signoff."
+    }
   ],
-  "positiveExamples": ["Best regards,", "With appreciation,", "Sincerely,", "Many thanks,", "Warmly,", "Talk soon,", "Cordially,", "Hope this helps,", "Take care,", "Kind regards,"]
+  "positiveExamples": [
+    "Best regards,",
+    "Best,",
+    "Sincerely,",
+    "Sincerely yours,",
+    "Many thanks,",
+    "Thank you,",
+    "Thanks,",
+    "Warmly,",
+    "Warm regards,",
+    "Warm wishes,",
+    "Kind regards,",
+    "Kindly,",
+    "All the best,",
+    "All best,",
+    "Best wishes,",
+    "Respectfully,",
+    "Yours truly,",
+    "Yours sincerely,",
+    "Yours,",
+    "Yours faithfully,",
+    "Yours very truly,",
+    "Very truly yours,",
+    "Warmly yours,",
+    "Respectfully yours,",
+    "Cordially,",
+    "Cordially regards,",
+    "Have a great week,",
+    "Have a good week,",
+    "Enjoy your week,",
+    "Take care,",
+    "Take it easy,",
+    "Be well,",
+    "Stay well,",
+    "Have a good weekend,",
+    "Have a great day,",
+    "Enjoy your weekend,",
+    "Appreciate it,",
+    "Much appreciated,",
+    "Gratefully,",
+    "Thanks again,",
+    "Thanks very much,",
+    "With thanks,",
+    "Thanks in advance,",
+    "Thank you once again,",
+    "Thanks for your time,",
+    "Thanks for your help,",
+    "Thank you for your help,",
+    "Thank you for the update,",
+    "In appreciation,",
+    "With kind regards,",
+    "With best regards,",
+    "With warm regards,",
+    "With gratitude,",
+    "With sincere thanks,",
+    "With appreciation,",
+    "Cordial regards,",
+    "Wishing you well,",
+    "Wishing you the best,",
+    "All good things,",
+    "Take care of yourself,",
+    "Thanks for everything,",
+    "Thanks for the update,",
+    "Thanks for the info,",
+    "Thanks for looking into this,",
+    "Best of luck,"
+  ]
 }

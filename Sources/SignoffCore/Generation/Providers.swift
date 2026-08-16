@@ -207,7 +207,43 @@ enum ProviderResponseGuard {
     /// the required trailing comma (e.g. "Brain freeze, activated,." → "Brain freeze, activated,"),
     /// then guarantees exactly one trailing comma.
     static func sanitizeSignoff(_ text: String) -> String {
-        var cleaned = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        // ── Deterministic format guardrails (do not rely on the 3B model for syntax) ──
+        // 1. Take only the first non-empty line — kills multi-line/multi-sentence
+        //    runaways on the spot (Apple exposes no stopSequences, so a rant that
+        //    fits the token cap still arrives here as several lines/commas; this is
+        //    where we cut it to one).
+        var cleaned = text
+            .components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first(where: { !$0.isEmpty }) ?? ""
+
+        // 2. Strip surrounding quotes, dashes, and markdown bullet markers.
+        cleaned = cleaned
+            .trimmingCharacters(in: CharacterSet(charactersIn: "\"-'•*#[]`"))
+            .trimmingCharacters(in: .whitespaces)
+
+        // 3. Mid-line punctuation artifacts: a comma-joined runaway like
+        //    "Baked beans on toast, a breakfast delight, a culinary," is the
+        //    3B model's most stubborn failure — it glues clauses with commas.
+        //    When a line has MORE THAN ONE comma, truncate to the text up to and
+        //    including the FIRST comma and discard the run-on tail. A real
+        //    1-7-word signoff has at most one comma (the trailing one). This is
+        //    deterministic: the first clause is always the intended closer; the
+        //    rest is sampled glue. ("With queso on top," → 1 comma, untouched.)
+        let firstComma = cleaned.firstIndex(of: ",")
+        if let cutLeft = firstComma, cleaned[cutLeft...].dropFirst().contains(",") {
+            // Only truncate if the SECOND comma is present → it's a glue-runaway.
+            cleaned = String(cleaned[...cutLeft])
+            // After truncation the first clause may still have a stray inner
+            // comma-free tail of whitespace; trim it.
+            cleaned = cleaned.trimmingCharacters(in: .whitespacesAndNewlines)
+            if cleaned.hasSuffix(",") { /* keep the one comma */ }
+        }
+        // Collapse any remaining doubled+ commas ("a,,," → "a,").
+        while cleaned.contains(",,") {
+            cleaned = cleaned.replacingOccurrences(of: ",,", with: ",")
+        }
+        cleaned = cleaned.trimmingCharacters(in: .whitespacesAndNewlines)
         // Collapse ",." ", !" ", ?" (with or without space) → ","
         while cleaned.hasSuffix(",.") || cleaned.hasSuffix(", .") || cleaned.hasSuffix(",!") || cleaned.hasSuffix(", !") || cleaned.hasSuffix(",?") || cleaned.hasSuffix(", ?") {
             // Find the comma and keep everything up to and including it
@@ -248,6 +284,10 @@ enum ProviderResponseGuard {
         if !cleaned.hasSuffix(",") {
             cleaned.append(",")
         }
+        // Capitalize the first letter (deterministic — model casing is unreliable).
+        if let first = cleaned.first, first.isLetter {
+            cleaned = String(first).uppercased() + cleaned.dropFirst()
+        }
         return cleaned
     }
 
@@ -255,7 +295,11 @@ enum ProviderResponseGuard {
     static func temperature(for context: ProviderGenerateContext) -> Double {
         // Explicit per-bucket temperature (avoids dynamic toneValue fallthrough).
         // Switches on the actual BucketID rawValue (see Models/Bucket.swift).
-        // standard (Normal): 0.8  — creative, varied
+        // standard (Normal): 0.65 — constrained enough to avoid the
+        //   noun-collision/opener-fixation ruts the on-device 3B model drifts
+        //   into under high entropy (the same drift documented for unhinged
+        //   below), while still creative enough to vary shapes. 0.8 left the
+        //   model ruting hard on the fake-origin verb-prep scaffold.
         // professional: 0.3       — constrained, consistent
         // unhinged (Cynical): 0.6 — edgy but controlled. Lower than standard on
         //   purpose: the on-device 3B model drifts into noun-collision ruts and
@@ -271,8 +315,8 @@ enum ProviderResponseGuard {
         switch context.bucketId {
         case "professional": return 0.3
         case "unhinged": return 0.6
-        case "standard": return 0.8
-        default: return 0.8 // fallback to standard
+        case "standard": return 0.65
+        default: return 0.65 // fallback to standard
         }
     }
 }

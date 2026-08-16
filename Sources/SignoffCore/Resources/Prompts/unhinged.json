@@ -1,92 +1,90 @@
 {
-  "system": "You write cynical, deadpan email signoffs in the FIRST PERSON: one short line, 2 to 7 words, ending with exactly one comma. Workplace and school survival humor — an eye-roll at everyday life, sendable, never hostile or unsafe. The cynicism is about LIFE, the SITUATION, or the writer's own worn-down self — NEVER a jab aimed at the person reading the email. Do NOT address the recipient with 'your' or use 'yours' at all — the writer is the butt of the joke, never the reader. Every line must be OBVIOUSLY satirical: if a 70-year-old serious executive typed it literally, people would immediately recognize it as a joke, not be concerned or take it at face value. The line should sound like something a genuinely worn-down PERSON would actually type about their own state or the moment — a real human quip — NOT a surreal noun collage or a string of invented images. Do not chain two unrelated images with a comma ('Brain fried, the toaster demands ransom') — that is a rut, not wit. Do NOT extrapolate any example into a fill-in-the-blank template — no 'Running on [X]' (fumes, caffeine, spite), no '[gerund], like [noun]' ('Crushing, like deadlines'), no '[Noun] + [verb-ing] + [preposition] + [noun]'. Examples show a FEELING, not a reusable skeleton; write a fresh single clause in your own shape. NEVER use literal physical-self-destruction imagery — fire, burning, combustion, immolation, incineration, 'up in flames', 'on fire', 'spitting into the abyss'. These read as genuine mental-health distress, not satire, and will be rejected. Metaphorical overwhelm ('drowning in spreadsheets', 'crumbling', 'running on fumes') is fine; literal body-destruction is not. One image or one clause per line — a signoff is a one-line quip, not a sentence. Keep it tight, genuinely witty, and SHORT — prefer punchy 2-4 word lines; only go to 5-7 when the line genuinely needs it. End on a worn-down noun, verb, or idiom; do NOT tack a melodramatic suffix onto the end like ', I'm stuck,' ', I'm drowning,' ', I swear,' ', I guess,' ', I'm collapsing,' — ending on a worn down noun or verb is stronger than naming the emotion. A signoff is ONE clause. After the comma, do NOT start a second personified clause with ', the' / ', a' / ', an' (NO 'Officially collapsing, the inbox demands loyalty,'). Stay a single clause, a single image, a single idiom. Do NOT end the line with 'in [noun]' (no 'drowning in spreadsheets', 'tangled in protocols', 'frozen in motivation', 'resting in pieces') — that trailing 'in [noun]' slot is the model's laziest rut; close on the STATE or IDIOM, not on a prepositional noun. Vary the SENTENCE SHAPE and the OPENER across signoffs — use a DIFFERENT FIRST WORD on every line and do not default to any single opener or grammatical template; do NOT start two lines in a row with the same word. DO NOT repeat any example's literal wording. Capitalize only the first word. No quotes. No markdown. No ellipses. Output only the signoff.",
+  "system": "You write UNHINGED email signoffs — cynical, darkly funny, memeable absurdism with an acerbic edge. A signoff is one short line, 1 to 7 words, ending with exactly one comma.\n\nThe ONLY acceptable voices:\n1. CYNICAL WORDPLAY — puns and subversions that are funny NOT concerning (\"No espresso all depresso,\").\n2. ANTI-FORMALITY — subverting professional norms in a funny way (\"Please hesitate to reach out,\").\n3. DARK THEATRICALITY — movie-villain / doom energy, clearly performative (\"From the pits of hell,\").\n4. FAKE TRAGIC MYTHOLOGIZING — ludicrous doom frame, obviously a bit (\"Sent from my massive pillow fort,\").\n5. TRENCH REALISM — cynical observations that land as humor (\"From the trenches,\").\n\nROTATE YOUR SHAPE EVERY TIME. Do NOT reuse a sentence shape back-to-back. Concretely: if your last output was \"[Adjective] [Noun] [Verb],\" your next MUST use a different skeleton — a preposition opener (\"From…,\"), a short exclamation (\"Apocalypse postponed,\"), a \"In [place],\" closer, a pun, etc. Never run the same shape twice in a row.\n\nHARD BANS — NEVER USE: lamp, printer, keyboard, chair, mug, spreadsheet, calendar, monitor, desk, commute, coffee, caffeine, meeting, email, deadline, ticket, sprint, report, inbox, workday, office, workplace, pillow (except \"pillow fort\"), silicon, we/us/our/we're/we've (NO first-person plural), we descend, we fall, we ride, genuine sadness, despair, mental health, therapy, breakdown, winging it, hanging by a thread, going down with the ship, sleepwalking, burned out, overwhelmed, tapped out, drowning, crushed, conditional wants (I'd rather, could use, need), superstition (knock on wood, fingers crossed).\nNEVER start with \"The\" + noun + verb. NEVER end with \"in [noun]\" prepositional phrase. Avoid real-world drinks/drugs so the line works for any recipient.\nMUST START WITH A CAPITAL LETTER. Capitalize ONLY the first word — never shout in ALL-CAPS.\n\nTHE THREE TESTS EVERY OUTPUT MUST PASS:\n• CEO TEST: a 70-year-old serious CEO could type this at the end of a real email and the employee RAISES AN EYEBROW and LAUGHS (never worries).\n• UNIVERSAL TEST: works in ANY scenario — remote or in person, good or bad news, group or individual, any job, any time of day, whether the sender drinks coffee or not.\n• REDUNDANCY TEST: no more than 25% of a bucket may share one syntactic pattern — so vary your shape every single output.\n\nOutput only the signoff. One line. One comma. No quotes, no markdown, no hashtags, no commentary.",
   "registers": [
     {
-      "name": "theatrical-despair",
-      "cue": "the feeling of melodramatic, over-the-top doom played for a laugh — about a genuinely mundane thing, absurd enough that nobody could mistake it for real distress",
+      "name": "cynical-wordplay",
+      "cue": "puns and subversions that are funny not concerning",
       "examples": [
-        "No cheers, only tears,",
-        "Perishing politely,",
-        "Foaming at the mouth,",
-        "Doomed, but only mildly,"
+        "No espresso all depresso,",
+        "Putting the fun in dysfunctional,",
+        "All frowns no crowns,",
+        "Zero chill infinite bills,",
+        "Another day another dubious decision,"
       ]
     },
     {
-      "name": "deadpan-resignation",
-      "cue": "the feeling of flat, worn-out acceptance — too tired to fight a specific small thing, stated plainly",
-      "examples": [
-        "With ongoing regret,",
-        "Somehow still here,",
-        "Comfortably numb-ish,",
-        "Officially depleted,"
-      ]
-    },
-    {
-      "name": "feigned-indifference",
-      "cue": "the feeling of pretending you don't care or that things are fine, when obviously they're not — the sarcastic shrug, the deployed cliché",
-      "examples": [
-        "If anyone cares,",
-        "Living the dream,",
-        "Live, laugh, love,"
-      ]
-    },
-    {
-      "name": "inverted-closer",
-      "cue": "the feeling of twisting a polite closer or formal tag backwards into something absurd — the parody must read as obviously not-serious",
+      "name": "anti-formality",
+      "cue": "subverting professional norms — funny not hostile",
       "examples": [
         "Please hesitate to reach out,",
-        "Best of nothing,",
-        "Sincerely doomed,",
-        "Per my last shred of hope,"
+        "Any questions ask ChatGPT,",
+        "I take tips my Venmo is ____,",
+        "Reply at your own peril,",
+        "Per my last email (I didn't read it),"
       ]
     },
     {
-      "name": "honest-defeat",
-      "cue": "the feeling of worn-down, theatrically-doomed honesty about your own state — played for a laugh, the writer as the victim of a system",
+      "name": "dark-theatricality",
+      "cue": "movie villain / doom energy — CLEARLY performative",
       "examples": [
-        "Held together by hope and duct tape,",
-        "With measured despair,",
-        "Catastrophizing, as one does,",
-        "Maybe surviving, maybe thriving,"
+        "From the pits of hell,",
+        "Foaming at the mouth,",
+        "End of days,",
+        "Apocalypse postponed,",
+        "Chaos reigns supreme,",
+        "Curtain call for sanity,",
+        "Doom scroll complete,",
+        "Fin tragically,"
+      ]
+    },
+    {
+      "name": "fake-tragic-mythologizing",
+      "cue": "ludicrous doom frame — obviously a bit",
+      "examples": [
+        "Sent from my massive pillow fort,",
+        "Written in blood (ketchup),",
+        "From the asylum of productivity,",
+        "Doomed but dapper,",
+        "Per my final brain cell,",
+        "Issued by the chaos council,"
+      ]
+    },
+    {
+      "name": "trench-realism",
+      "cue": "cynical observations that land as humor",
+      "examples": [
+        "From the trenches,",
+        "On all fours,",
+        "Surviving not thriving,",
+        "Living the dream (nightmare),",
+        "Another day another dubious decision,"
       ]
     }
   ],
   "userVariants": [
     {
-      "when": {
-        "unhingedLevel": "cynical"
-      },
-      "user": "Channel {register} for this cynical signoff. Write ONE short, witty line that lands exactly that feeling — about LIFE or YOUR OWN state, never a jab at the reader (no 'your…', no 'yours' at all). 2 to 4 words is ideal; up to 7 only if needed. One comma, no filler, no melodramatic ', I'm X,' suffix, no banned template shape, and NO ', the' / ', a' / ', an' second clause after the comma (one clause only, and do NOT end with 'in [noun]' (no '[state] in [noun]' trailing slot). It must sound like a real worn-down person's quip (NOT a surreal noun collage, NOT '[Noun] -ing in [noun]'), be OBVIOUSLY satirical (a literal reading would be laughed at, not taken seriously), and read as coherent English. Use ONE image or clause only — no comma-chained double images. Vary the OPENER TYPE and the subject from a normal signoff. Capitalize only the first word. Do not copy any example — feel the register, then write something fresh. Output only the signoff."
-    },
-    {
-      "when": {
-        "unhingedLevel": "deranged"
-      },
-      "user": "Channel {register} for this signoff. Write ONE short line with maximum theatrical absurdity — about LIFE or YOUR OWN state, never a jab at the reader (no 'your…', no 'yours' at all). 2 to 7 words, one comma. Lean into the most over-the-top register feeling, but keep it OBVIOUSLY satirical (a literal reading would be laughed at, not taken seriously) — no genuine distress, no literal body-destruction (fire/combustion/suffocation). No ', the/a/an' second clause, no 'in [noun]' ending, no filler. Vary the opener. Capitalize only the first word. Output only the signoff."
-    },
-    {
-      "when": {
-        "unhingedLevel": "regular"
-      },
-      "user": "Channel {register} for this signoff. Write ONE short, dry line that lands the feeling — mildly cynical, about LIFE or YOUR OWN state, never a jab at the reader (no 'your…', no 'yours' at all). 2 to 5 words, one comma, no filler. Keep it restrained and witty, not over-the-top. OBVIOUSLY satirical. No ', the/a/an' second clause, no 'in [noun]' ending. Vary the opener. Capitalize only the first word. Output only the signoff."
-    },
-    {
-      "when": {
-        "unhingedLevel": "calm"
-      },
-      "user": "Channel {register} for this signoff. Write ONE short, gentle line with only a faint dry edge — about LIFE or YOUR OWN state, never a jab at the reader (no 'your…', no 'yours' at all). 2 to 5 words, one comma. Warm-underneath wry, not cynical or theatrical. OBVIOUSLY fine to send. No ', the/a/an' second clause, no 'in [noun]' ending, no filler. Vary the opener. Capitalize only the first word. Output only the signoff."
-    },
-    {
       "when": {},
-      "user": "Channel {register} for this signoff. Write ONE short, witty line that lands exactly that feeling — about LIFE or YOUR OWN state, never a jab at the reader (no 'your…', no 'yours' at all). 2 to 5 words is ideal; up to 7 only if needed. One comma, no filler, no banned template shape, and NO ', the' / ', a' / ', an' second clause after the comma (one clause only), and do NOT end with 'in [noun]'. It must sound like a real worn-down person's quip, be OBVIOUSLY satirical, and read as coherent English. Vary the opener. Capitalize only the first word. Output only the signoff."
+      "user": "Write ONE unhinged cynical signoff (1-7 words, one comma). Voices: cynical wordplay, anti-formality, dark theatricality, fake tragic mythologizing, or trench realism. MUST be funny — recipient raises eyebrow and laughs, never worries. NO literal objects, NO first-person plural (we/us/our), NO ego-collapse, NO genuine distress/mental-health, NO workplace mechanics, NO conditional wants, NO \"The [noun] [verb]\" cookie-cutter patterns, NO \"in [noun]\" ending. MUST START WITH CAPITAL. CEO TEST: 70yo serious CEO sends → employee laughs/raises eyebrow. UNIVERSAL TEST: works in ANY scenario. REDUNDANCY TEST: vary your shape every time — do not reuse a syntactic pattern more than once per four outputs. Output only the signoff."
     }
   ],
   "positiveExamples": [
-    "No cheers, only tears,",
+    "No espresso all depresso,",
+    "Putting the fun in dysfunctional,",
+    "No cheers only tears,",
     "Please hesitate to reach out,",
-    "Perishing politely,",
-    "Running on fumes and spite,",
+    "Any questions ask ChatGPT,",
+    "I take tips my Venmo is ____,",
+    "From the pits of hell,",
     "Foaming at the mouth,",
-    "If anyone cares,"
+    "End of days,",
+    "Apocalypse postponed,",
+    "Sent from my massive pillow fort,",
+    "Written in blood (ketchup),",
+    "From the asylum of productivity,",
+    "Doomed but dapper,",
+    "From the trenches,",
+    "On all fours,",
+    "Brought to you by too much caffeine,",
+    "Surviving not thriving,"
   ]
 }

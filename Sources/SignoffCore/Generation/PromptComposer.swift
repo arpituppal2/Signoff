@@ -162,7 +162,7 @@ public enum PromptComposer: Sendable {
         let fewShotExamples = register?.examples ?? positiveExamples
         if !fewShotExamples.isEmpty {
             let exampleList = fewShotExamples.prefix(8).map { "- \($0)" }.joined(separator: "\n")
-            sections.append("Examples of the exact feeling to channel (do not copy — feel the register, write fresh):\n\(exampleList)")
+            sections.append("Examples of the exact feeling to channel — these are STYLE REFERENCES ONLY. Never output any of these lines verbatim, and never reuse their opening scaffold (e.g. \"Issued by my…\", \"Delivered by…\", \"Per my…\", \"With queso on top,\"). Invent a COMPLETELY NOVEL line in the same register:\n\(exampleList)")
         }
 
         // Add curated examples for additional few-shot prompting (positive only)
@@ -208,30 +208,40 @@ public enum PromptComposer: Sendable {
             sections.append("Phrase list:\n\(list)")
         }
 
-        // Avoid-list window: 6, not 12. The on-device 3B model fixates on
-        // opener patterns, and a 12-phrase avoid-list saturates the model's
-        // available fixation space around iteration 8-10 of a rapid burst —
-        // per-attempt odds collapse and a full 8-attempt slate exhausts
-        // (observed 5/20 FAILs at window=12). A 6-window still prevents
-        // back-to-back repetition (the consecutive-rut behavior we care
-        // about) while leaving the model room to generate by iteration 10.
-        //
-        // This is intentionally NARROWER than the validator's rut-comparison
-        // window (SignoffQualityValidator uses suffix(12) for Jaccard +
-        // opening/closing fingerprints). The two serve different purposes and
-        // are NOT meant to be equal: the prompt avoid-list tells the MODEL
-        // what not to repeat (too big → it can't generate at all → exhaustion),
-        // while the validator window enforces no-similarity against a broader
-        // recent burst (catches a rut reappearing within 12 outputs). The
-        // model doesn't need to see items 7-12 to avoid them — it rarely
-        // regenerates a line similar to an 8-old output while also dodging the
-        // last 6, and when it does the validator catches it.
+        // Avoid-list window: 8, not 6. The on-device 3B model fixates on
+        // opener patterns, and a too-small window lets a rut-shape fall out
+        // of view before the model rotates away from it (observed: the model
+        // re-produced a phrase the moment it left the 6-window). An 8-window
+        // keeps recent outputs — good (for shape rotation) and recently
+        // rejected (for rut suppression) — visible long enough to break a rut
+        // while still leaving room to generate. This is intentionally
+        // NARROWER than the validator's rut-comparison window (suffix 12 for
+        // Jaccard + opening/closing fingerprints) — the prompt avoid-list
+        // tells the MODEL what not to repeat; the validator enforces
+        // no-similarity against a broader recent burst. The earlier concern
+        // that a wide window causes burst-exhaustion applies to the 8-attempt
+        // hybrid slate (executeHybridGeneration), not the single-shot raw
+        // generateRaw path, which has no retry slate to exhaust.
         let avoid = recentTexts
-            .suffix(6)
+            .suffix(8)
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
         if !avoid.isEmpty {
-            sections.append("Avoid repeating these recent phrases:\n" + avoid.map { "- \($0)" }.joined(separator: "\n"))
+            // Pink-elephant-resistant framing. A literal "do not repeat X, Y, Z"
+            // ban-list foregrounds the exact tokens (e.g. "toaster") and the
+            // 3B model fixates on them, copying the banned noun into the next
+            // output ("Not signed by the toaster,"). Reframe the recent lines
+            // as a STYLE REFERENCE and lead with the POSITIVE rotation
+            // directive ("use a completely different subject/object/word"), so
+            // the model's attention lands on "pick something new" rather than
+            // on the noun we told it to avoid. The list still surfaces recent
+            // phrases (required for dedup), but they read as exemplars to
+            // diverge from, not forbidden tokens to obsess over.
+            sections.append(
+                "Recent signoffs — for style reference only. Write in the same kind of humor, "
+                + "but use a COMPLETELY different subject on this line. Never reuse any concrete "
+                + "object, name, catchphrase, or word that appears in any line below:\n"
+                + avoid.map { "- \($0)" }.joined(separator: "\n"))
         }
 
         var profileLines: [String] = []

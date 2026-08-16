@@ -83,6 +83,42 @@ public final class SignoffQualityValidator: ObservableObject {
 
     private init() {}
 
+    /// Concrete common-noun set — GATE-INTERNAL ONLY. Never surfaced to the
+    /// model prompt (that would amplify the very tokens it catches — the
+    /// pink-elephant effect we hit when a "STYLE DIVERGE: avoid banana, …"
+    /// directive produced "Banana peel under the umbrella," naming BOTH banned
+    /// nouns in one output). This list lives only inside `validate()`; the
+    /// model never sees it, so enumerating banana does NOT anchor the model on
+    /// banana. The 3B has a LATENT food/everyday-object fixation (banana,
+    /// cheese, umbrella, blender, toaster recur across prompt edits with no
+    /// prompt-side anchor) that surfaces as bare 2-3-word noun-stack closers
+    /// ("Banana peel," / "Banana split," / "Banana in the blender,"). The
+    /// short-tier gate (below) catches these by shape, fruit/modest — we add
+    /// tokens only as new concrete-nouns are observed fixating; this is
+    /// open-ended by design (a complete English-noun list would over-fire on
+    /// legitimate noun-closers like "Toaster," as a real deadpan object).
+    private let concreteNounSet: Set<String> = [
+        // fruits
+        "banana", "plantain", "mango", "papaya", "kiwi", "lemon", "lime",
+        "orange", "peach", "plum", "pear", "apple", "grape", "melon", "fig",
+        // dessert/food (the 3B's fixation cluster)
+        "cheese", "toast", "toaster", "waffle", "pancake", "bagel", "muffin",
+        "cookie", "brownie", "pudding", "custard", "jelly", "jam", "queso",
+        "nacho", "nachos", "taco", "burrito", "pasta", "noodle", "soup", "stew",
+        "salad", "cereal", "oatmeal", "yogurt",
+        // drinks
+        "coffee", "tea", "soda", "juice", "smoothie", "milkshake", "latte",
+        // animals
+        "llama", "pug", "panda", "penguin", "otter", "goose", "duck",
+        // everyday objects (3B fixation cluster)
+        "umbrella", "blender", "toaster", "fridge", "pillow", "blanket",
+        "spoon", "fork", "napkin", "crayon", "ladder", "helmet", "whisk",
+        // body parts
+        "nose", "elbow", "ankle", "nostril", "eyebrow",
+        // food parts (the peel/peel/skin/salad fixation)
+        "peel", "rind", "crust", "skin"
+    ]
+
     /// Validate a candidate signoff against quality criteria
     public func validate(_ candidate: String, forBucket bucketId: String, recentHistory: [String] = []) -> ValidationResult {
         let trimmed = candidate.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -348,20 +384,84 @@ public final class SignoffQualityValidator: ObservableObject {
             }
         }
         // ALL-CAPS check (all buckets): when fixated, the model occasionally
-        // flips to shout-formatting ("REJECTED BY THE SYSTEM,") which reads
-        // as a bug, not wit. A signoff capitalizes only the first word; a line
-        // where every alphabetic token is uppercase is a rut artifact. Guard
-        // against trivial 1-word closers by requiring 2+ tokens, and against
-        // legitimate acronyms by requiring ALL words (not just one) uppercase.
-        if wordCount >= 2 {
-            let alphaWords = trimmed.split { $0.isWhitespace || $0 == "," || $0 == "." }
-                .map { String($0) }
-                .filter { $0.contains { $0.isLetter } }
-            let allUpper = !alphaWords.isEmpty && alphaWords.allSatisfy { word in
-                word.contains { $0.isLetter } && word.filter { $0.isLetter }.allSatisfy { $0.isUppercase }
+        // flips to shout-formatting ("THANK YOU, sincerely," / "REGARDS, Sincerely,") which reads
+        // as a bug, not wit. A signoff capitalizes only the FIRST word; a first word
+        // that is fully uppercase is a rut artifact. Single-word ALL-CAPS closers
+        // like "BEST," "THANKS," "REGARDS," are not real email conventions — they
+        // read as a glitch. Check ALL word counts (including 1-word closers).
+        let allWords = trimmed.split { $0.isWhitespace || $0 == "," || $0 == "." }
+            .map { String($0) }
+            .filter { $0.contains { $0.isLetter } }
+        if let firstWord = allWords.first {
+            let firstWordIsAllUpper = firstWord.contains { $0.isLetter } && firstWord.filter { $0.isLetter }.allSatisfy { $0.isUppercase }
+            if firstWordIsAllUpper {
+                return .invalid(reason: "Signoff first word is ALL-CAPS (shout formatting) — capitalize only the first word")
             }
-            if allUpper {
-                return .invalid(reason: "Signoff is in ALL-CAPS (shout formatting) — capitalize only the first word")
+        }
+
+        // Invented -ly adverb check (all buckets): the model invents forms like
+        // "regretfully," "professionally," "honestly," "muchly," "regardingly"
+        // by adding -ly to adjectives. These are NOT real email closers.
+        // Check if the final word (before punctuation) ends in -ly and has 5+ letters
+        // (to allow real -ly words like "sincerely" which IS a conventional closer).
+        // "Muchly" (7 letters, not a real word) gets caught; "sincerely" (9, real) passes.
+        if let lastWord = allWords.last {
+            let lastWordLower = lastWord.lowercased()
+            if lastWordLower.hasSuffix("ly") && lastWordLower.count >= 5 {
+                let knownRealLy = ["sincerely", "cordially", "respectfully", "gratefully", "faithfully", "truly", "warmly", "kindly", "really", "surprisingly"]
+                if !knownRealLy.contains(lastWordLower) {
+                    return .invalid(reason: "Signoff ends with invented -ly adverb '\(lastWord)' — not a real email closer")
+                }
+            }
+        }
+
+        // Multiple-closer combination check (professional bucket): the model
+        // sometimes combines two closers like "Warm, my regards," or "Thanks, best,"
+        // Real professional emails use EXACTLY ONE closer. Detect by counting
+        // conventional closer tokens in the output.
+        if bucketId == "professional" {
+            let professionalCloserTokens = [
+                "best", "thanks", "regards", "sincerely", "respectfully", "cordially",
+                "warm", "kind", "warmly", "kindly", "yours", "faithfully", "truly",
+                "appreciate", "gratitude", "talk", "speak", "see", "take", "hope",
+                "enjoy", "have", "stay", "be", "keep", "wish", "cheers", "cheerio",
+                "ciao", "later", "soon", "then", "care", "well", "strong", "safe",
+                "thrive", "rest", "easy", "calm", "in", "with", "all", "my", "of",
+                "for", "the", "to", "your", "our", "your", "its", "from"
+            ]
+            // Heuristic: if we see 3+ tokens that are typical closer words,
+            // it's likely combining multiple closers. Also catch the specific
+            // "Warm, my regards" pattern: 3 words where 2 are close-phrases.
+            // More robust: check for comma-separated multiple phrases that are
+            // each conventional closers on their own.
+            if allWords.count >= 3 {
+                // Look for pattern: "Warm, my regards" -> ["Warm", "my", "regards"]
+                // Both "warm" and "regards" are closer words, "my" is connective
+                let closerWordsInOutput = allWords.filter { professionalCloserTokens.contains($0.lowercased()) }.count
+                if closerWordsInOutput >= 2 {
+                    // But allow "Best regards" (2 words, conventional pair)
+                    // and "Kind regards" etc. Check if it matches a known pair
+                    let knownPairs = [
+                        "best regards", "kind regards", "warm regards", "warm wishes",
+                        "kind wishes", "sincerely yours", "yours truly", "yours sincerely",
+                        "yours faithfully", "respectfully yours", "cordially yours",
+                        "very truly yours", "all best", "all the best", "my best",
+                        "best wishes", "talk soon", "speak soon", "see soon",
+                        "talk later", "see later", "until then", "see then",
+                        "take care", "have a", "enjoy your", "hope this",
+                        "stay well", "be well", "keep well", "stay in", "keep in",
+                        "thanks for", "thank you", "many thanks", "thanks again",
+                        "with thanks", "with gratitude", "with appreciation",
+                        "warm thanks", "kind thanks", "much appreciated",
+                        "best of", "kind of", "warmly", "sincerely", "respectfully",
+                        "cordially", "faithfully", "truly", "yours", "regards"
+                    ]
+                    let outputLower = trimmed.lowercased()
+                    let matchesKnownPair = knownPairs.contains { outputLower.hasPrefix($0) || outputLower.contains(" \($0)") }
+                    if !matchesKnownPair && closerWordsInOutput >= 2 {
+                        return .invalid(reason: "Professional signoff combines multiple closers — use exactly one conventional closer")
+                    }
+                }
             }
         }
 
@@ -454,6 +554,69 @@ public final class SignoffQualityValidator: ObservableObject {
             let hasFunctionWord = tokens.contains { functionWords.contains($0) }
             if !hasFunctionWord {
                 return .invalid(reason: "Incoherent — no function words linking the nouns (word salad)")
+            }
+        }
+
+        // 14. Short-tier bare-noun salad — the gap rule-13 (4+ words only) misses.
+        // The 3B's latent food/object fixation surfaces as bare 2-3-word noun
+        // stacks ("Banana peel," / "Banana split," / "Umbrella down,") which
+        // read as salad to a human but pass every regex gate above: not a banned
+        // token, not a duplicate, not a template skeleton, short enough to dodge
+        // rule-13's 4-word floor. Catch by SHAPE — a 2-3 word line whose tokens
+        // are ALL concrete-noun-class (≥1 from concreteNounSet AND none a
+        // function/verb/pronoun) is a bare-noun closer with no twist → reject.
+        // Single-word closers ("Bazinga,") and 3-word function-bearing closers
+        // ("Winter is coming,") are deliberately NOT caught (single-token or
+        // has a function word). Noun set is gate-internal (never prompt-visible)
+        // so it can enumerate banana without amplifying it.
+        if (bucketId == "standard" || bucketId == "unhinged")
+            && wordCount >= 2 && wordCount <= 3 {
+            let tokensShort = trimmed.lowercased()
+                .split { $0.isWhitespace || $0 == "," || $0 == "." }
+                .map { String($0) }
+                .filter { !$0.isEmpty }
+            let functionWordsShort: Set<String> = [
+                "a","an","the","my","your","our","his","her","their",
+                "in","on","at","and","but","with","for","to","of","is","am",
+                "being","not","no","only","barely","it","i","you","we","they",
+                "me","us","as","do","does","maybe","like","than","so"
+            ]
+            let noneFunction = tokensShort.allSatisfy { !functionWordsShort.contains($0) }
+            let hasConcreteNoun = tokensShort.contains { concreteNounSet.contains($0) }
+            if noneFunction && hasConcreteNoun {
+                return .invalid(reason: "Short bare-noun closer (food/object fixation) — no twist, reads as salad. Use a real phrase/idiom/catchphrase, not a bare noun.")
+            }
+        }
+
+        // 15. Lead-concrete-noun-no-predication salad — the 4-7 word escapees
+        // of rule-14. When rule-14 blocks 2-3 word bare-noun stacks, the 3B
+        // ADAPTS by padding banana-salad with a function-word tail: "Banana
+        // split on the moon," / "Banana peels on the keyboard," / "Banana in
+        // the blender,". These have a function word (so rule-13's 4+ function-
+        // word requirement is met) but are still noun-pile salad: a concrete noun
+        // LEADS as subject AND there is no real predication (no copula like is/
+        // are/was, no modal, no action verb from realVerbIndicators). A
+        // verb-bearing noun-led line ("Winter is coming," has "is") passes; a
+        // bare-noun-led line with only prepositions/articles has no predication
+        // and reads as salad → reject. Noun set is gate-internal (never prompt-
+        // visible). realVerbIndicators is modest; extend if new preposition-
+        // padded salad surfaces.
+        if (bucketId == "standard" || bucketId == "unhinged")
+            && wordCount >= 4 && wordCount <= 7 {
+            let tokensLead = trimmed.lowercased()
+                .split { $0.isWhitespace || $0 == "," || $0 == "." }
+                .map { String($0) }
+                .filter { !$0.isEmpty }
+            let realVerbIndicators: Set<String> = [
+                "is","are","was","were","be","been","being","has","have","had",
+                "falling","falls","hurts","hurt","comes","coming","sent","crafted",
+                "signed","written","dictated","living","live","speak","spoken",
+                "ride","arrived","stays","leaves","remains","looks","keeps","grows"
+            ]
+            let leadsConcrete = !tokensLead.isEmpty && concreteNounSet.contains(tokensLead[0])
+            let hasRealVerb = tokensLead.contains { realVerbIndicators.contains($0) }
+            if leadsConcrete && !hasRealVerb {
+                return .invalid(reason: "Lead-noun salad (concrete noun leads, no predication) — reads as a noun pile, not a joke. Put the joke in a real sentence shape.")
             }
         }
 
