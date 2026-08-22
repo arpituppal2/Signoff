@@ -68,11 +68,13 @@ public struct PromptTemplate: Codable, Sendable, Equatable {
 }
 
 public extension PromptTemplate {
-    /// Loads `Resources/Prompts/<bucket>.json`. Maps `standard` → `general`
-    /// so the legacy resource name stays valid.
+    /// Loads `Resources/Prompts/<bucket>.json`. Maps `standard` → `quotes`
+    /// for the Quotes bucket (formerly Standard/Normal).
     static func load(bucket: String) async -> PromptTemplate? {
         guard !bucket.isEmpty else { return nil }
-        let resource = (bucket == BucketID.standard.rawValue) ? "general" : bucket
+        // Load the appropriate JSON resource. The standard bucket maps to the
+        // "quotes" file which contains the approved pop‑culture signoffs.
+        let resource = (bucket == BucketID.standard.rawValue) ? "quotes" : bucket
 
         // Static cache to avoid repeated JSON parsing
         if let cached = await PromptTemplateCache.shared.get(resource) {

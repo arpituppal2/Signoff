@@ -8,20 +8,20 @@ struct FoundationModelsIntegrationTests {
 
     @Test("Prompt templates all buckets decode")
     func promptTemplatesAllBucketsDecode() async throws {
-        let buckets = ["general", "professional", "unhinged", "custom"]
+        let buckets = ["quotes", "professional", "unhinged", "custom"]
         for name in buckets {
-            let loaded = await PromptTemplate.load(bucket: name == "general" ? BucketID.standard.rawValue : name)
+            let loaded = await PromptTemplate.load(bucket: name == "quotes" ? BucketID.standard.rawValue : name)
             #expect(loaded != nil, "Expected Prompts/\(name).json to decode for bucket \(name)")
             #expect(!loaded!.system.isEmpty)
             #expect(!loaded!.userVariants.isEmpty)
         }
     }
 
-    @Test("Prompt template standard maps to general resource")
-    func promptTemplateStandardMapsToGeneralResource() async throws {
+    @Test("Prompt template standard maps to quotes resource")
+    func promptTemplateStandardMapsToQuotesResource() async throws {
         let standard = await PromptTemplate.load(bucket: BucketID.standard.rawValue)
-        let general = await PromptTemplate.load(bucket: "general")
-        #expect(standard == general)
+        let quotes = await PromptTemplate.load(bucket: "quotes")
+        #expect(standard == quotes)
         #expect(standard != nil)
     }
 

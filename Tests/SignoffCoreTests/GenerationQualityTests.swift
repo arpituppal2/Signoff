@@ -49,7 +49,7 @@ struct GenerationQualityTests {
         try await warmup()
         var results: [String] = []
 
-        for i in 1...5 {
+        for i in 1...10 {
             let fmReady = service.isFoundationModelsReady()
             print("[TEST] Iteration \(i): fmReady=\(fmReady)")
             let result = await service.generate(
@@ -78,18 +78,11 @@ struct GenerationQualityTests {
         for (i, r) in results.enumerated() { print("\(i+1). \(r)") }
 
         // Quality assertions
-        #expect(results.count == 5)
+        #expect(results.count == 10)
 
-        // Every result must pass the production quality gate (banned tokens,
-        // n-grams, markdown, word-count range, single-line, readability).
-        // The validator is the single source of truth — do not duplicate a
-        // looser substring list here; it false-positives on legitimate closers
-        // (e.g. banning "insight" would reject "Insightful as always,").
+        // Validator deleted per user request — terminal-shape checks remain as
+        // a hard backstop against model narration/empty output.
         for r in results {
-            switch SignoffQualityValidator.shared.validate(r, forBucket: "standard", recentHistory: []) {
-            case .valid: break
-            case .invalid(let reason): Issue.record("Validator rejected \"\(r)\": \(reason)")
-            }
             #expect(hasCleanTerminus(r), "Must end with comma/period/letter: \(r)")
         }
         #expect(bananaSentinel(results), "Banana-fixation regression detected")
@@ -100,7 +93,7 @@ struct GenerationQualityTests {
         try await warmup()
         var results: [String] = []
 
-        for _ in 1...5 {
+        for _ in 1...10 {
             let result = await service.generate(
                 bucketId: "professional",
                 profile: nil,
@@ -126,13 +119,9 @@ struct GenerationQualityTests {
         print("=== Professional bucket results ===")
         for (i, r) in results.enumerated() { print("\(i+1). \(r)") }
 
-        #expect(results.count == 5)
+        #expect(results.count == 10)
 
         for r in results {
-            switch SignoffQualityValidator.shared.validate(r, forBucket: "professional", recentHistory: []) {
-            case .valid: break
-            case .invalid(let reason): Issue.record("Validator rejected \"\(r)\": \(reason)")
-            }
             #expect(hasCleanTerminus(r), "Must end with comma/period/letter: \(r)")
         }
     }
@@ -142,7 +131,7 @@ struct GenerationQualityTests {
         try await warmup()
         var results: [String] = []
 
-        for _ in 1...5 {
+        for _ in 1...10 {
             let result = await service.generate(
                 bucketId: "unhinged",
                 profile: nil,
@@ -168,13 +157,9 @@ struct GenerationQualityTests {
         print("=== Unhinged bucket results ===")
         for (i, r) in results.enumerated() { print("\(i+1). \(r)") }
 
-        #expect(results.count == 5)
+        #expect(results.count == 10)
 
         for r in results {
-            switch SignoffQualityValidator.shared.validate(r, forBucket: "unhinged", recentHistory: []) {
-            case .valid: break
-            case .invalid(let reason): Issue.record("Validator rejected \"\(r)\": \(reason)")
-            }
             #expect(hasCleanTerminus(r), "Must end with comma/period/letter: \(r)")
         }
         #expect(bananaSentinel(results), "Banana-fixation regression detected")

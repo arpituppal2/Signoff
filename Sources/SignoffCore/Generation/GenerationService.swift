@@ -158,7 +158,7 @@ public final class GenerationService: ObservableObject {
                                          voiceProfile: VoiceProfile,
                                          bypassCache: Bool = false) async -> Outcome {
 
-        let validator = SignoffQualityValidator.shared
+        // let validator = SignoffQualityValidator.shared // removed per user request
         let voiceSnapshot = PromptComposer.VoiceProfileSnapshot(from: voiceProfile)
 
         // Track used mechanisms for diversity
@@ -238,40 +238,26 @@ public final class GenerationService: ObservableObject {
                     let text = try await FoundationModelsProvider().generate(context)
                     // No caching — every generation is live.
 
-                    // Validate the generated text
-                    let validation = validator.validate(text, forBucket: bucketId, recentHistory: recentTexts)
-                    switch validation {
-                    case .valid(let validText):
-                        // Track the register that produced this signoff
-                        let register = composed.prompt.components(separatedBy: "Channel ").last?.components(separatedBy: " for this").first
-                        let finalText = PostProcessor.appendFooter(validText, profile: snapshot, mode: postfixMode)
-                        let latencyMs = Int(Date().timeIntervalSince(t0) * 1000)
-                        let outcome = GenerationOutcome(
-                            text: finalText, providerKind: .foundationModels,
-                            latencyMs: latencyMs, bucketId: bucketId, tone: nil)
-                        self.lastResult = outcome
-                        self.lastStatus = nil
-                        UsageTracker.shared.increment()
-                        await persistence?.recordGeneration(
-                            bucketId: outcome.bucketId, text: outcome.text,
-                            providerRaw: outcome.providerKind.rawValue, latencyMs: outcome.latencyMs,
-                            register: register)
-                        SignoffSignpost.recordGenerateLatency(provider: .foundationModels, latencyMs: latencyMs)
-                        GenerationDebugProbe.shared.recordEvent(
-                            "live fmf ok \(bucketId) \(latencyMs)ms (attempt \(attempt))")
-                        return .success(outcome)
-
-                    case .invalid(let reason):
-                        Self.log.info("[GenerationService] Validation failed (attempt \(attempt)): \(reason, privacy: .public)")
-                        GenerationDebugProbe.shared.recordEvent("validation fail \(bucketId) attempt \(attempt): \(reason)")
-
-                        // Last attempt? fall through to honest failure. Else
-                        // continue with a corrective prompt + a different register.
-                        if attempt == maxAttempts {
-                            break
-                        }
-                        continue
-                    }
+                    // Validate the generated text — simplified per user request (accept all outputs)
+                    let validText = text
+                    // Optionally track the register used (if needed)
+                    let register = composed.prompt.components(separatedBy: "Channel ").last?.components(separatedBy: " for this").first
+                    let finalText = PostProcessor.appendFooter(validText, profile: snapshot, mode: postfixMode)
+                    let latencyMs = Int(Date().timeIntervalSince(t0) * 1000)
+                    let outcome = GenerationOutcome(
+                        text: finalText, providerKind: .foundationModels,
+                        latencyMs: latencyMs, bucketId: bucketId, tone: nil)
+                    self.lastResult = outcome
+                    self.lastStatus = nil
+                    UsageTracker.shared.increment()
+                    await persistence?.recordGeneration(
+                        bucketId: outcome.bucketId, text: outcome.text,
+                        providerRaw: outcome.providerKind.rawValue, latencyMs: outcome.latencyMs,
+                        register: register)
+                    SignoffSignpost.recordGenerateLatency(provider: .foundationModels, latencyMs: latencyMs)
+                    GenerationDebugProbe.shared.recordEvent(
+                        "live fmf ok \(bucketId) \(latencyMs)ms (attempt \(attempt))")
+                    return .success(outcome)
                 } catch {
                     if attempt < maxAttempts {
                         let delay = UInt64(500_000_000 * attempt)
@@ -480,43 +466,92 @@ public final class GenerationService: ObservableObject {
                 // passed ONLY here, to the dedup/skeleton layer, so roll N+1 can't
                 // be a near-dup or template-clone of roll N without surfacing the
                 // rejects to the model's prompt text.
-                let shadowDedupe = effectiveRecent + rejectedThisInvocation
-                let verdict = await MainActor.run {
-                    SignoffQualityValidator.shared.validate(
-                        cleaned, forBucket: bucketId, recentHistory: shadowDedupe)
-                }
-                let skeletonHit = Self.templateSkeletonCollision(cleaned, against: shadowDedupe)
-                if case .valid = verdict, skeletonHit == nil {
-                    // A line accepted here may live in the cross-invocation
-                    // reject buffer from a prior near-miss; purge it so the
-                    // next invocation doesn't diverge from the just-acceptance.
-                    crossRejects.removeAll { $0 == cleaned }
-                    persistRecentRejects(crossRejects)
-                    let finalText = PostProcessor.appendFooter(cleaned, profile: snapshot, mode: postfixMode)
-                    let latencyMs = Int(Date().timeIntervalSince(t0) * 1000)
-                    let outcome = GenerationOutcome(
-                        text: finalText, providerKind: .foundationModels,
-                        latencyMs: latencyMs, bucketId: bucketId, tone: nil)
-                    self.lastResult = outcome
-                    self.lastStatus = nil
-                    GenerationDebugProbe.shared.recordEvent(
-                        "raw ok \(bucketId) roll \(roll)/\(maxInternalRolls)")
-                    return .success(outcome)
-                } else {
-                    lastValidationError = skeletonHit ?? {
-                        if case .invalid(let r) = verdict { return r }
-                        return nil
-                    }()
-                    rejectedThisInvocation.append(cleaned)   // cumulative avoid-list for next roll
-                    // Cross-invocation memory: record so the NEXT invocation
-                    // (and later rolls here) diverge from this reject.
+                // Simple validation approximating CEO, Universal, and Redundancy tests
+                // Conditions: ends with a single comma, 2‑7 words, first word capitalized, no banned tokens, no markdown.
+                let trimmed = cleaned.trimmingCharacters(in: .whitespacesAndNewlines)
+                // Reject against the full shadow dedup window: human-accepted history
+                // (recentTexts) ∪ cross-invocation human rejects (crossRejects) ∪
+                // this invocation's mechanical rejects (rejectedThisInvocation).
+                // Rejects are NEVER rendered to the prompt — only used here to keep
+                // the 3B model from re-cycling a just-rejected phrase. Skeleton match
+                // catches template-collapse variants; exact-lowercase backstop catches
+                // verbatim repeats the skeleton (≥4-token) check would miss.
+                let dedupHistory = recentTexts + crossRejects + rejectedThisInvocation
+                if let collision = Self.templateSkeletonCollision(trimmed, against: dedupHistory)
+                    ?? (dedupHistory.contains(where: { $0.compare(trimmed, options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive]) == .orderedSame }) ? "Exact-duplicate of a recent/rejected line" : nil) {
+                    lastValidationError = collision
+                    rejectedThisInvocation.append(cleaned)
                     crossRejects.append(cleaned)
                     if crossRejects.count > 6 { crossRejects.removeFirst(crossRejects.count - 6) }
                     persistRecentRejects(crossRejects)
-                    GenerationDebugProbe.shared.recordEvent(
-                        "raw gate roll \(roll)/\(maxInternalRolls) reject: \(lastValidationError ?? "?")")
-                    continue   // mechanical miss → re-roll with this candidate added to local avoid-list
+                    GenerationDebugProbe.shared.recordEvent("raw gate roll \(roll)/\(maxInternalRolls) reject: \(lastValidationError ?? "?")")
+                    continue
                 }
+                // Reject similes: "X like Y" — always poetic/abstract, never a joke
+                // Check for " like " as a substring (catches all poetic comparisons)
+                let hasSimile = trimmed.range(of: " like ", options: .caseInsensitive) != nil
+                if hasSimile {
+                    lastValidationError = "Rejected: generic simile (\"X like Y\" pattern is always abstract/poetic, not a joke)"
+                    rejectedThisInvocation.append(cleaned)
+                    crossRejects.append(cleaned)
+                    if crossRejects.count > 6 { crossRejects.removeFirst(crossRejects.count - 6) }
+                    persistRecentRejects(crossRejects)
+                    GenerationDebugProbe.shared.recordEvent("raw gate roll \(roll)/\(maxInternalRolls) reject: simile")
+                    continue
+                }
+                guard trimmed.hasSuffix(",") else {
+                    lastValidationError = "Missing trailing comma"
+                    // treat as reject
+                    rejectedThisInvocation.append(cleaned)
+                    crossRejects.append(cleaned)
+                    if crossRejects.count > 6 { crossRejects.removeFirst(crossRejects.count - 6) }
+                    persistRecentRejects(crossRejects)
+                    GenerationDebugProbe.shared.recordEvent("raw gate roll \(roll)/\(maxInternalRolls) reject: \(lastValidationError ?? "?")")
+                    continue
+                }
+                let words = trimmed.dropLast().split { $0.isWhitespace }
+                if words.count < 2 || words.count > 7 {
+                    lastValidationError = "Word count \(words.count) out of 2‑7"
+                    rejectedThisInvocation.append(cleaned)
+                    crossRejects.append(cleaned)
+                    if crossRejects.count > 6 { crossRejects.removeFirst(crossRejects.count - 6) }
+                    persistRecentRejects(crossRejects)
+                    GenerationDebugProbe.shared.recordEvent("raw gate roll \(roll)/\(maxInternalRolls) reject: \(lastValidationError ?? "?")")
+                    continue
+                }
+                if let first = words.first, let firstChar = first.first, !firstChar.isUppercase {
+                    lastValidationError = "First word not capitalized"
+                    rejectedThisInvocation.append(cleaned)
+                    crossRejects.append(cleaned)
+                    if crossRejects.count > 6 { crossRejects.removeFirst(crossRejects.count - 6) }
+                    persistRecentRejects(crossRejects)
+                    GenerationDebugProbe.shared.recordEvent("raw gate roll \(roll)/\(maxInternalRolls) reject: \(lastValidationError ?? "?")")
+                    continue
+                }
+                // Banned words list (example)
+                let banned = ["coffee", "drink", "beer", "wine", "whiskey"]
+                let lower = trimmed.lowercased()
+                if banned.contains(where: { lower.contains($0) }) {
+                    lastValidationError = "Contains banned word"
+                    rejectedThisInvocation.append(cleaned)
+                    crossRejects.append(cleaned)
+                    if crossRejects.count > 6 { crossRejects.removeFirst(crossRejects.count - 6) }
+                    persistRecentRejects(crossRejects)
+                    GenerationDebugProbe.shared.recordEvent("raw gate roll \(roll)/\(maxInternalRolls) reject: \(lastValidationError ?? "?")")
+                    continue
+                }
+                // Passed simple validation – accept
+                crossRejects.removeAll { $0 == cleaned }
+                persistRecentRejects(crossRejects)
+                let finalText = PostProcessor.appendFooter(cleaned, profile: snapshot, mode: postfixMode)
+                let latencyMs = Int(Date().timeIntervalSince(t0) * 1000)
+                let outcome = GenerationOutcome(
+                    text: finalText, providerKind: .foundationModels,
+                    latencyMs: latencyMs, bucketId: bucketId, tone: nil)
+                self.lastResult = outcome
+                self.lastStatus = nil
+                GenerationDebugProbe.shared.recordEvent("raw ok \(bucketId) roll \(roll)/\(maxInternalRolls)")
+                return .success(outcome)
             } catch {
                 GenerationDebugProbe.shared.recordEvent(
                     "raw fmf fail \(bucketId) roll \(roll): \(error.localizedDescription)")

@@ -80,7 +80,7 @@ public final class Bucket {
 
     public var toneLabel: String {
         switch id {
-        case BucketID.standard.rawValue: return "normal"
+        case BucketID.standard.rawValue: return "quotes"
         case BucketID.professional.rawValue: return toneValue.map { $0 > 0.5 ? "casual" : "formal" } ?? "neutral"
         case BucketID.unhinged.rawValue: return unhingedLevel?.rawValue ?? "regular"
         case BucketID.list.rawValue: return "phrase"
@@ -109,16 +109,16 @@ public enum BucketPostfixMode: String, CaseIterable, Sendable {
 }
 
 public extension Bucket {
-    /// Default 3 buckets: Normal / Professional / Cynical.
-    /// Shortcut digits: 1 Normal, 2 Professional, 3 Cynical
+    /// Default 3 buckets: Quotes / Professional / Cynical.
+    /// Shortcut digits: 1 Quotes, 2 Professional, 3 Cynical
     /// (` is the menu-bar opener). `standard` and `unhinged` keep their
-    /// internal IDs (store + history stability) but display as "Normal" and
+    /// internal IDs (store + history stability) but display as "Quotes" and
     /// "Cynical". "My List" and "Footer" were removed in the v3 slim.
     static func defaultBuckets() -> [Bucket] {
         return BucketID.allCases.compactMap { bid -> Bucket? in
             guard bid != .generalLegacy else { return nil }
             switch bid {
-        case .standard:     return Bucket(id: bid.rawValue, name: "Normal",     iconSymbol: "text.alignleft",                sortOrder: 0, isEnabled: true, emojiEnabled: false)
+        case .standard:     return Bucket(id: bid.rawValue, name: "Quotes",     iconSymbol: "quote.closing",                sortOrder: 0, isEnabled: true, emojiEnabled: false)
         case .professional: return Bucket(id: bid.rawValue, name: "Professional",iconSymbol: "person.text.rectangle.fill",    sortOrder: 1, isEnabled: true, toneValue: 0.5, emojiEnabled: false)
         case .unhinged:     return Bucket(id: bid.rawValue, name: "Cynical",     iconSymbol: "bolt.fill",                    sortOrder: 2, isEnabled: true, unhingedLevel: .cynical, emojiEnabled: true)
             case .list:         return nil

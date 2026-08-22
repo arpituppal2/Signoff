@@ -231,13 +231,27 @@ enum ProviderResponseGuard {
         //    deterministic: the first clause is always the intended closer; the
         //    rest is sampled glue. ("With queso on top," → 1 comma, untouched.)
         let firstComma = cleaned.firstIndex(of: ",")
-        if let cutLeft = firstComma, cleaned[cutLeft...].dropFirst().contains(",") {
-            // Only truncate if the SECOND comma is present → it's a glue-runaway.
-            cleaned = String(cleaned[...cutLeft])
-            // After truncation the first clause may still have a stray inner
-            // comma-free tail of whitespace; trim it.
-            cleaned = cleaned.trimmingCharacters(in: .whitespacesAndNewlines)
-            if cleaned.hasSuffix(",") { /* keep the one comma */ }
+        if let cutLeft = firstComma {
+            // Check if we should avoid truncation for legitimate internal commas
+            // Specifically, if the first segment (before first comma) is 1 word,
+            // it's likely a legitimate quote with internal comma (e.g. "Elementary, my dear Watson,")
+            let firstSegment = String(cleaned[..<cutLeft])
+            let firstSegmentWords = firstSegment.split { $0.isWhitespace }.filter { !$0.isEmpty }
+            if firstSegmentWords.count == 1 {
+                // Likely a legitimate internal comma, don't truncate
+                // (e.g. "Elementary, my dear Watson," or "Hello, Jerry,")
+            } else {
+                // Check for runaway: if there's another comma after the first one
+                let remainder = cleaned[cutLeft...].dropFirst()
+                if remainder.contains(",") {
+                    // Only truncate if the SECOND comma is present → it's a glue-runaway.
+                    cleaned = String(cleaned[...cutLeft])
+                    // After truncation the first clause may still have a stray inner
+                    // comma-free tail of whitespace; trim it.
+                    cleaned = cleaned.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if cleaned.hasSuffix(",") { /* keep the one comma */ }
+                }
+            }
         }
         // Collapse any remaining doubled+ commas ("a,,," → "a,").
         while cleaned.contains(",,") {
@@ -313,9 +327,9 @@ enum ProviderResponseGuard {
         //   model closer to the register few-shot examples; register-cycling +
         //   the validator's dedup/rut fingerprints handle diversity.
         switch context.bucketId {
-        case "professional": return 0.3
+        case "professional": return 0.7  // Higher for more variation in professional
         case "unhinged": return 0.6
-        case "standard": return 0.65
+        case "standard": return 0.3  // Lower temperature for quotes bucket to focus on recall
         default: return 0.65 // fallback to standard
         }
     }
@@ -357,15 +371,23 @@ public struct FoundationModelsProvider: GenerationProvider {
             let pasteable = try ProviderResponseGuard.validatedPasteable(sanitized, provider: "FMF")
             let lengthValidated = try ProviderResponseGuard.validatedLength(pasteable)
 
-            // Validate against quality validator's banned tokens (MainActor)
-            let validationResult = await MainActor.run {
-                SignoffQualityValidator.shared.validate(lengthValidated, forBucket: context.bucketId, recentHistory: [])
-            }
-            switch validationResult {
-            case .valid(let validated):
-                return validated
-            case .invalid(let reason):
-                lastError = GenerationError.guardrailViolation(reason: reason)
+            do {
+                // Validate against guard words and banned n-grams
+                let guardWordChecked = try ProviderResponseGuard.validatedAgainstGuardWords(lengthValidated, provider: "FMF")
+                let bannedNGramChecked = try ProviderResponseGuard.validatedAgainstBannedNGrams(guardWordChecked)
+
+                let finalChecked: String
+                switch context.bucketId {
+                case "professional":
+                    finalChecked = try ProviderResponseGuard.validatedProfessional(bannedNGramChecked)
+                case "unhinged":
+                    finalChecked = try ProviderResponseGuard.validatedCynical(bannedNGramChecked)
+                default:
+                    finalChecked = bannedNGramChecked
+                }
+                return finalChecked
+            } catch {
+                lastError = error
                 if attempt < 3 {
                     continue
                 }

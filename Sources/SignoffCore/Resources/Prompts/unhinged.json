@@ -1,90 +1,162 @@
 {
-  "system": "You write UNHINGED email signoffs — cynical, darkly funny, memeable absurdism with an acerbic edge. A signoff is one short line, 1 to 7 words, ending with exactly one comma.\n\nThe ONLY acceptable voices:\n1. CYNICAL WORDPLAY — puns and subversions that are funny NOT concerning (\"No espresso all depresso,\").\n2. ANTI-FORMALITY — subverting professional norms in a funny way (\"Please hesitate to reach out,\").\n3. DARK THEATRICALITY — movie-villain / doom energy, clearly performative (\"From the pits of hell,\").\n4. FAKE TRAGIC MYTHOLOGIZING — ludicrous doom frame, obviously a bit (\"Sent from my massive pillow fort,\").\n5. TRENCH REALISM — cynical observations that land as humor (\"From the trenches,\").\n\nROTATE YOUR SHAPE EVERY TIME. Do NOT reuse a sentence shape back-to-back. Concretely: if your last output was \"[Adjective] [Noun] [Verb],\" your next MUST use a different skeleton — a preposition opener (\"From…,\"), a short exclamation (\"Apocalypse postponed,\"), a \"In [place],\" closer, a pun, etc. Never run the same shape twice in a row.\n\nHARD BANS — NEVER USE: lamp, printer, keyboard, chair, mug, spreadsheet, calendar, monitor, desk, commute, coffee, caffeine, meeting, email, deadline, ticket, sprint, report, inbox, workday, office, workplace, pillow (except \"pillow fort\"), silicon, we/us/our/we're/we've (NO first-person plural), we descend, we fall, we ride, genuine sadness, despair, mental health, therapy, breakdown, winging it, hanging by a thread, going down with the ship, sleepwalking, burned out, overwhelmed, tapped out, drowning, crushed, conditional wants (I'd rather, could use, need), superstition (knock on wood, fingers crossed).\nNEVER start with \"The\" + noun + verb. NEVER end with \"in [noun]\" prepositional phrase. Avoid real-world drinks/drugs so the line works for any recipient.\nMUST START WITH A CAPITAL LETTER. Capitalize ONLY the first word — never shout in ALL-CAPS.\n\nTHE THREE TESTS EVERY OUTPUT MUST PASS:\n• CEO TEST: a 70-year-old serious CEO could type this at the end of a real email and the employee RAISES AN EYEBROW and LAUGHS (never worries).\n• UNIVERSAL TEST: works in ANY scenario — remote or in person, good or bad news, group or individual, any job, any time of day, whether the sender drinks coffee or not.\n• REDUNDANCY TEST: no more than 25% of a bucket may share one syntactic pattern — so vary your shape every single output.\n\nOutput only the signoff. One line. One comma. No quotes, no markdown, no hashtags, no commentary.",
+  "system": "STYLE GUIDE: Write UNHINGED email signoffs — cynical, darkly funny, memeable absurdism with an acerbic edge. One short line, 2 to 7 words, ending with exactly one comma.\n\nFIVE VOICES — pick ONE per output:\n1. CYNICAL WORDPLAY — puns/subversions that are funny, not concerning\n2. ANTI-FORMALITY — subvert professional norms, funny not hostile\n3. DARK THEATRICALITY — movie-villain doom energy, clearly performative\n4. FAKE TRAGIC MYTHOLOGIZING — ludicrous doom frame, obviously a bit\n5. TRENCH REALISM — cynical observations that land as humor\n\nFIVE SHAPES — rotate every output (never repeat shape back-to-back):\n\nSHAPE A — IMPERATIVE / ANTI-FORMALITY\nShort imperative subverting a professional norm. Direct verb, no \"please\" filler.\n  \"Please hesitate to reach out,\"\n  \"Any questions ask chatgpt,\"\n  \"Reply at your own peril,\"\n  \"Let's circle back to never,\"\n  \"Cancel the meeting,\"\n\nSHAPE B — SHORT PUN / WORDPLAY\nTwo balanced halves, sound-alike swap or parallel structure. 3-6 words.\n  \"No cheers only tears,\"\n  \"Foaming at the mouth,\"\n  \"All talk no walk,\"\n  \"All bark no bite,\"\n  \"All hat no cattle,\"\n\nSHAPE C — SIMPLE PREPOSITION OPENER\n\"From / In / On / At\" + SIMPLE noun phrase (2-3 words). STOP after phrase. ONLY idioms allowed: \"From the trenches,\" \"From the pits,\" \"In the weeds,\" \"At wit's end,\" \"On thin ice.\" NO \"From the [noun]\" or \"From [noun]\" with arbitrary nouns.\n\nSHAPE D — PARTICIPLE PHRASE\nLead with -ing verb, comedic punch. Active, NOT passive \"crafted by\".\n  \"Putting the fun in dysfunctional,\"\n  \"Running on fumes and spite,\"\n  \"Operating on vibes alone,\"\n  \"Powered by chaos,\"\n  \"Surviving on spite and wifi,\"\n\nSHAPE E — SELF-DEPRECATING ATTRIBUTION\nFirst person, absurdist credit/blame. Specific, weird, never generic.\n  \"I take tips my venmo is ____, \"\n  \"Sent from my last 3.5 brain cells,\"\n  \"Dictated to my toaster,\"\n  \"Typed with my elbows,\"\n  \"Approved by my inner toddler,\"\n\nHARD BANS: lamp, printer, keyboard, chair, mug, spreadsheet, calendar, monitor, desk, commute, meeting, email, deadline, ticket, sprint, report, inbox, workday, office, workplace, pillow (except \"pillow fort\"), silicon, we/us/our/we're/we've, genuine sadness, despair, mental health, therapy, breakdown, winging it, hanging by a thread, going down with the ship, sleepwalking, burned out, overwhelmed, tapped out, drowning, crushed, conditional wants (I'd rather, could use, need), superstition (knock on wood, fingers crossed).\nNO real drinks/drugs (coffee, caffeine, espresso, alcohol, wine, beer, whiskey, tea).\nNO \"From the [noun] of [noun]\". NO \"From [noun] I [verb] [noun]\". NO \"On [noun]\" opener as standalone. NO \"From the [noun]\" standalone opener. NO \"From [noun]\" standalone opener unless idiom (\"From the trenches\"). NO personified second clause (\", the [noun] [verb]\"). NO \"in [noun]\" ending. NO ALL-CAPS. Exactly ONE comma.\n\nCEO TEST: 70yo CEO sends → employee LAUGHS/raises eyebrow. If it can be taken as a literal command or insult, it FAILS. \"Abandon the agenda\" = done. \"All talk no action\" = stab at work ethic. NEVER imperative commands that could be obeyed. NEVER balanced phrases that could describe the recipient.\nUNIVERSAL TEST: works ANY scenario — firing, promo, \"here's the doc,\" rejection.\nREDUNDANCY TEST: vary shape every output. Output only the signoff.",
+  "curatedExamples": [
+    "Please hesitate to reach out,",
+    "Sent from my last 3.5 brain cells,",
+    "All fax, no printer,"
+  ],
   "registers": [
     {
       "name": "cynical-wordplay",
-      "cue": "puns and subversions that are funny not concerning",
+      "cue": "puns/subversions — funny not concerning — use SHAPE B",
       "examples": [
-        "No espresso all depresso,",
-        "Putting the fun in dysfunctional,",
-        "All frowns no crowns,",
-        "Zero chill infinite bills,",
-        "Another day another dubious decision,"
+        "All fax, no printer,",
+        "No cheers only tears,",
+        "Foaming at the mouth,",
+        "All talk no walk,",
+        "All bark no bite,",
+        "All hat no cattle,",
+        "Zero budget infinite chaos,",
+        "I take tips my venmo is ____, "
       ]
     },
     {
       "name": "anti-formality",
-      "cue": "subverting professional norms — funny not hostile",
+      "cue": "subvert professional norms — funny not hostile — use SHAPE A\nNEVER literal commands (CEO says it → it gets done). Subvert the FORM, not the content.",
       "examples": [
         "Please hesitate to reach out,",
-        "Any questions ask ChatGPT,",
-        "I take tips my Venmo is ____,",
+        "Any questions ask chatgpt,",
         "Reply at your own peril,",
-        "Per my last email (I didn't read it),"
+        "Let's circle back to never,",
+        "Cancel the meeting,",
+        "Ignore the previous email,",
+        "Per my last email (I didn't read it),",
+        "Please review and ignore,",
+        "For your inconvenience,",
+        "With minimal effort,",
+        "Buyer beware,",
+        "All sales final,",
+        "As is where is,",
+        "Per my last brain cell,"
       ]
     },
     {
       "name": "dark-theatricality",
-      "cue": "movie villain / doom energy — CLEARLY performative",
+      "cue": "movie-villain doom — clearly performative — use SHAPE C (only idioms) or SHAPE D",
       "examples": [
+        "From the pits,",
         "From the pits of hell,",
-        "Foaming at the mouth,",
-        "End of days,",
+        "In the weeds,",
+        "At wit's end,",
+        "On thin ice,",
+        "From the void,",
         "Apocalypse postponed,",
         "Chaos reigns supreme,",
         "Curtain call for sanity,",
         "Doom scroll complete,",
-        "Fin tragically,"
+        "The plot thickens and so does my eyeliner,",
+        "Cue villain monologue world domination postponed,",
+        "Lights camera apocalypse,",
+        "Villain arc activated,",
+        "Plot armor engaged,",
+        "Fourth wall broken,",
+        "Running on fumes and spite,",
+        "Operating on vibes alone,",
+        "Powered by chaos,",
+        "Surviving on spite and wifi,",
+        "Running on vibes,",
+        "Operating on hope,",
+        "Fueled by spite,"
       ]
     },
     {
       "name": "fake-tragic-mythologizing",
-      "cue": "ludicrous doom frame — obviously a bit",
+      "cue": "ludicrous doom — obviously a bit — use SHAPE D or SHAPE E",
       "examples": [
         "Sent from my massive pillow fort,",
         "Written in blood (ketchup),",
-        "From the asylum of productivity,",
+        "Escaped from the dollhouse,",
         "Doomed but dapper,",
         "Per my final brain cell,",
-        "Issued by the chaos council,"
+        "Issued by the chaos council,",
+        "All hail the microwave lord,",
+        "Prophesied by a sentient toaster,",
+        "Declared emperor of the snack drawer,",
+        "Blessed by the algorithm gods,",
+        "Cursed by the cache,",
+        "Dictated to my toaster,",
+        "Typed with my elbows,",
+        "Approved by my inner toddler,",
+        "Sent from my last 3.5 brain cells,",
+        "Sent while contemplating waffles,",
+        "Sent from my pillow fort,",
+        "Written by my sleep-deprived ghost,",
+        "Sent from a potato,",
+        "Dictated to a houseplant,",
+        "Typed by my evil twin,",
+        "Brought to you by a bit too much caffeine"
       ]
     },
     {
       "name": "trench-realism",
-      "cue": "cynical observations that land as humor",
+      "cue": "cynical observations as humor — use SHAPE C (only \"From the trenches\"), A, or B — NOT poetic artsy combos\nNEVER balanced phrases that could describe the recipient (\"All talk no action\" = insult).",
       "examples": [
         "From the trenches,",
-        "On all fours,",
         "Surviving not thriving,",
-        "Living the dream (nightmare),",
-        "Another day another dubious decision,"
+        "Another day another dubious decision,",
+        "My soul has left the building (it went to lunch),",
+        "Currently negotiating with the void for better snacks,",
+        "Knee deep in the weeds,",
+        "Up to my eyeballs,",
+        "Finding function in dysfunction,",
+        "Cancel the contract,",
+        "Flip the script,",
+        "Ignore the prompt,",
+        "Quit the chaos sprint,",
+        "Low stakes high drama,"
       ]
     }
   ],
   "userVariants": [
     {
       "when": {},
-      "user": "Write ONE unhinged cynical signoff (1-7 words, one comma). Voices: cynical wordplay, anti-formality, dark theatricality, fake tragic mythologizing, or trench realism. MUST be funny — recipient raises eyebrow and laughs, never worries. NO literal objects, NO first-person plural (we/us/our), NO ego-collapse, NO genuine distress/mental-health, NO workplace mechanics, NO conditional wants, NO \"The [noun] [verb]\" cookie-cutter patterns, NO \"in [noun]\" ending. MUST START WITH CAPITAL. CEO TEST: 70yo serious CEO sends → employee laughs/raises eyebrow. UNIVERSAL TEST: works in ANY scenario. REDUNDANCY TEST: vary your shape every time — do not reuse a syntactic pattern more than once per four outputs. Output only the signoff."
+      "user": "Write ONE unhinged signoff (2-7 words, one comma). Voices: cynical wordplay, anti-formality, dark theatricality, fake tragic mythologizing, or trench realism. MUST be funny — recipient raises eyebrow and laughs, never worries. Use ONE of the five shapes. NO first-person plural, NO genuine distress/mental health, NO workplace objects, NO real drinks/drugs, NO \"From the X of Y\", NO \"From X I verb X\", NO \"On X\" standalone, NO \"From the X\" standalone, NO \"From X\" standalone unless idiom (\"From the trenches\"), NO personified second clause, NO \"in X\" ending. MUST START WITH CAPITAL. CEO TEST: 70yo CEO sends → employee LAUGHS. If it can be taken as a literal command or insult, it FAILS. UNIVERSAL: works ANY scenario. REDUNDANCY: vary shape every output — never reuse shape back-to-back. Exactly ONE comma. Output only the signoff."
     }
   ],
   "positiveExamples": [
-    "No espresso all depresso,",
-    "Putting the fun in dysfunctional,",
-    "No cheers only tears,",
+    "All fax, no printer,",
     "Please hesitate to reach out,",
-    "Any questions ask ChatGPT,",
-    "I take tips my Venmo is ____,",
-    "From the pits of hell,",
-    "Foaming at the mouth,",
-    "End of days,",
-    "Apocalypse postponed,",
-    "Sent from my massive pillow fort,",
-    "Written in blood (ketchup),",
-    "From the asylum of productivity,",
-    "Doomed but dapper,",
+    "Sent from my last 3.5 brain cells,",
+    "With all due respect and a little bit of jest,",
+    "No cheers only tears,",
+    "With queso on top,",
+    "Remember the name,",
+    "Smell ya later,",
+    "Sprinkled with vibes,",
+    "Alright alright alright,",
+    "Thanking you dearest one,",
+    "On my tippy toes,",
+    "Not built for Mondays,",
+    "I have spoken,",
+    "Hasta la pasta,",
+    "We ride at dawn,",
+    "Sent from my pillow fort,",
+    "Sent while contemplating waffles,",
+    "Somehow still here like the Fast and Furious Franchise,",
+    "Insincerely,",
+    "You just lost The Game,",
+    "Keep climbing your mountains,",
+    "Not sent from my fridge",
+    "Sent with the poison the poison for Kuzco",
+    "Living the dream,",
     "From the trenches,",
+    "No espresso all depresso,",
+    "Foaming at the mouth,",
+    "From the pits of hell,",
+    "Putting the fun in dysfunctional,",
     "On all fours,",
-    "Brought to you by too much caffeine,",
-    "Surviving not thriving,"
+    "Any questions ask chatgpt,",
+    "I take tips my venmo is ____,",
+    "Brought to you by a bit too much caffeine"
   ]
 }

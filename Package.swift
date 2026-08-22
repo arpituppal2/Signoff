@@ -13,7 +13,7 @@ let package = Package(
     ],
     dependencies: [
         .package(url: "https://github.com/apple/swift-collections.git", from: "1.2.0"),
-        .package(url: "https://github.com/swiftlang/swift-testing.git", from: "0.8.0"),
+        .package(url: "https://github.com/apple/swift-testing.git", from: "0.12.0"),
     ],
     targets: [
         .target(
@@ -52,30 +52,16 @@ let package = Package(
                 .enableUpcomingFeature("StrictConcurrency"),
             ]
         ),
+        .executableTarget(
+            name: "GenerateDemo",
+            dependencies: ["SignoffCore"],
+            path: "Scripts"
+        ),
+
         .testTarget(
             name: "SignoffCoreTests",
-            dependencies: [
-                "SignoffCore",
-                .product(name: "Testing", package: "swift-testing"),
-            ],
-            path: "Tests/SignoffCoreTests",
-            resources: [
-                .process("Resources/Prompts"),
-            ],
-            swiftSettings: [
-                .enableUpcomingFeature("StrictConcurrency"),
-            ]
-        ),
-        .testTarget(
-            name: "SignoffUITests",
-            dependencies: [
-                "SignoffUI",
-                .product(name: "Testing", package: "swift-testing"),
-            ],
-            path: "Tests/SignoffUITests",
-            swiftSettings: [
-                .enableUpcomingFeature("StrictConcurrency"),
-            ]
+            dependencies: ["SignoffCore", .product(name: "Testing", package: "swift-testing")],
+            path: "Tests/SignoffCoreTests"
         ),
     ]
 )

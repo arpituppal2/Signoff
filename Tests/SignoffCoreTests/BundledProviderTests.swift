@@ -19,10 +19,10 @@ struct BundledProviderTests {
         }
     }
 
-    @Test("Standard prompt has system instructions")
-    func standardPromptHasSystemInstructions() async throws {
+    @Test("Quotes prompt has system instructions")
+    func quotesPromptHasSystemInstructions() async throws {
         guard let template = await PromptTemplate.load(bucket: BucketID.standard.rawValue) else {
-            Issue.record("Standard prompt must load")
+            Issue.record("Quotes prompt must load")
             return
         }
         #expect(!template.system.isEmpty)
@@ -37,12 +37,12 @@ struct BundledProviderTests {
         #expect(fallback.userVariants.count >= 1)
     }
 
-    /// Verify the standard bucket maps to the "general" prompt resource
-    @Test("Standard bucket maps to general resource")
-    func standardBucketMapsToGeneralResource() async throws {
+    /// Verify the standard bucket maps to the "quotes" prompt resource
+    @Test("Standard bucket maps to quotes resource")
+    func standardBucketMapsToQuotesResource() async throws {
         let standard = await PromptTemplate.load(bucket: BucketID.standard.rawValue)
-        let general = await PromptTemplate.load(bucket: "general")
-        #expect(standard == general)
+        let quotes = await PromptTemplate.load(bucket: "quotes")
+        #expect(standard == quotes)
     }
 
     @Test("Prompt template load unknown bucket returns nil")

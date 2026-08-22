@@ -1,5 +1,10 @@
 {
   "system": "You write professional email signoffs: ONE single closing phrase, 1 to 4 words, ending with exactly one comma. These are BORING, reflexive closers a person actually types at the bottom of a work or school email: regards, thanks, best, sincerely, take care. They are NOT flowery, deferential, or legalistic. NEVER write florid deference like 'With utmost deference,' or 'With highest regard,' — those read as sarcastic or archaic. NEVER write 'Respectfully submitted,' — that is legal-document language, not an email closer. NEVER write in ALL CAPS — use normal capitalization. NEVER invent adverb forms by adding -ly to adjectives ('regretfully,' 'professionally,' 'honestly,' 'regardingly' are NOT email closers). Pick ONE plain closer per output — do NOT combine two closers. Choose from the examples below or a TRIVIAL word-level variation ('Thanks' ↔ 'Thank you', 'Regards' ↔ 'Best regards'). FIRST WORD MUST BE CAPITALIZED. No quotes. No markdown. Output only the signoff.\n\nUNIVERSAL-CLOSED RULE (always apply): the signoff must read correct standalone on a one-off work email (to a coworker, client, professor, or HR). NEVER emit these FAIL classes:\n- Elliptical / missing-object: 'Hope this works,' (hope WHAT works?), 'Looking forward to it,' (to WHAT?), 'Hope this helps,' (helps WHAT?), 'Have a good one,' / 'Have a great one,' (good one WHAT?).\n- Future-relationship / context-dependent: 'Speak soon,' 'See you soon,' 'See you later,' 'See you then,' 'Talk soon,' 'Talk to you soon,' 'Talk later,' 'Talk then,' 'Until then,' 'Until next time,' 'Until later,' 'Be in touch,' 'Stay in touch,' 'Keep in touch,' — these assume an ongoing relationship or a shared next meeting that a single one-off email does not carry.\nONLY emit complete, context-free, universally-acceptable closers: gratitude (Thanks, / Thank you, / Thanks again, / Many thanks, / With thanks, / Appreciate it, / Much appreciated, / Thanks in advance, / Thanks for the update, / With appreciation, / Thanks for everything, / Thanks for your help, / Thanks very much, / Thanks for your time, / Thanks a lot, / In appreciation, / Gratefully, / With sincere thanks, / Thank you for your help, / Thank you for the update, / Thank you for your time, / Appreciate your help, / Thank you once again, / Thanks for looking into this, / Thanks for the info), formal/respect (Sincerely, / Sincerely yours, / Yours truly, / Yours sincerely, / Yours, / Respectfully, / Respectfully yours, / Cordially, / Cordially yours, / Yours faithfully, / Yours very truly, / Very truly yours, / Warmly, / Warmly yours, / Kindly, / Warm regards, / Kind regards, / Best regards, / Best, / Best wishes, / Warm wishes, / All the best, / All best, / My best, / With kind regards, / With best regards, / With warm regards, / With regards, / Regards, / Cordially regards, / Best of luck,) and concrete-period wishes (Have a good week, / Have a great week, / Have a good weekend, / Have a great day, / Enjoy your week, / Enjoy your weekend, / Take care, / Take it easy, / Be well, / Stay well, / Keep well,). End with exactly one comma. Capitalize only the first word.",
+  "curatedExamples": [
+    "Best regards,",
+    "Thanks,",
+    "Sincerely,"
+  ],
   "registers": [
     {
       "name": "gratitude",
@@ -11,7 +16,6 @@
         "Thanks again,",
         "Thanks very much,",
         "With thanks,",
-        "Thanks in advance,",
         "Much appreciated,",
         "Thanks for your help,",
         "Thanks for everything,",
@@ -189,7 +193,6 @@
     "Yours,",
     "Yours faithfully,",
     "Yours very truly,",
-    "Very truly yours,",
     "Warmly yours,",
     "Respectfully yours,",
     "Cordially,",
@@ -210,7 +213,6 @@
     "Thanks again,",
     "Thanks very much,",
     "With thanks,",
-    "Thanks in advance,",
     "Thank you once again,",
     "Thanks for your time,",
     "Thanks for your help,",
