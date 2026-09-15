@@ -16,6 +16,7 @@ struct ShipAllBucketsTest {
 
         let buckets: [(String, String)] = [
             ("standard", "standard"),
+            ("professional", "professional"),
             ("unhinged", "unhinged"),
         ]
         let rounds = Int(ProcessInfo.processInfo.environment["ROUNDS"] ?? "8") ?? 8

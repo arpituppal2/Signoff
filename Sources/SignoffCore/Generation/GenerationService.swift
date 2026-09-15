@@ -119,19 +119,20 @@ public final class GenerationService: ObservableObject {
         let voiceProfile = VoiceProfile.shared
 
         // ── Reference buckets serve verified banks ──
-        // Standard and Unhinged are pop-culture/reference buckets: their whole
-        // point is real recognizable lines, which the on-device 3B cannot
-        // reliably produce (it ruts on salad scaffolds — "Break a bone while
-        // balancing a spoon", "Yours truly while floating above a pickle jar" —
-        // that pass structural gates but read as word salad). Serving the
-        // curated reference bank is the feature, not a crutch — the same
-        // justification Standard already used. Every entry is a real, whole,
-        // user-caliber line (the user's own examples are the core of the
-        // unhinged bank). Live generation remains the fallback below for the
-        // other buckets and for novel output. Professional stays live (a closed
-        // menu the 3B handles fine).
+        // Standard, Unhinged, and Professional are reference buckets: their
+        // whole point is real lines, which the on-device 3B cannot reliably
+        // produce (it ruts on salad scaffolds — "Break a bone while balancing
+        // a spoon", "Yours truly while floating above a pickle jar" — that pass
+        // structural gates but read as word salad). Serving the curated
+        // reference bank is the feature, not a crutch — the same justification
+        // Standard always used. Every entry is a real, whole, user-caliber line
+        // (the user's own examples are the core of the unhinged bank).
+        // Professional is a closed menu of standard closers; banking it makes
+        // the safe bucket 100% reliable — it must NEVER produce something weird.
+        // Live generation remains the fallback below for custom and novel output.
         let bankedBuckets: Set<String> = [
             BucketID.standard.rawValue,
+            BucketID.professional.rawValue,
             BucketID.unhinged.rawValue,
         ]
         if bankedBuckets.contains(bucketId),
