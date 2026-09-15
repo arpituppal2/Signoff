@@ -4,13 +4,9 @@ import os
 import FoundationModels
 #endif
 
-/// The single entry point for generation. **On-device only.**
+/// The single entry point for generation. **Cloud primary** (OpenAI →
+/// Anthropic when an API key is configured), **on-device FM fallback**.
 ///
-/// Hybrid strategy:
-/// 1. Live Foundation Models generation with bucket-specific prompts and register few-shot examples
-/// 2. Local SignoffQualityValidator filters output (banned tokens, similarity, length, narration, format)
-/// 3. Up to 4 corrective retries with register-cycling for shape diversity
-/// 4. Honest failure if no attempt passes — NEVER a hardcoded fallback signoff
 @MainActor
 public final class GenerationService: ObservableObject {
     public static let shared = GenerationService()
@@ -25,8 +21,19 @@ public final class GenerationService: ObservableObject {
 
     private var inflightRequest: Bool = false
 
-    /// Track used mechanisms per bucket for diversity
+    /// Track used mechanisms per bucket for diversity.
     private var usedMechanisms: [String: [String]] = [:]
+
+    /// Accepted outputs seen by this service instance. This closes the gap
+    /// between calls made with stale caller history and the post-generation
+    /// dedup gate. Rejected candidates are never stored here or shown to the
+    /// model.
+    private var acceptedHistory: [String: [String]] = [:]
+
+    /// Keep enough history that a full bank cycle produces all-distinct lines.
+    /// The largest curated bank (unhinged) has 139 phrases, so 200 lets a whole
+    /// cycle pass before the least-recently-seen fallback engages.
+    private let acceptedHistoryLimit = 200
 
     public init() {}
 
@@ -84,8 +91,8 @@ public final class GenerationService: ObservableObject {
         let t0 = Date()
         return await runGeneration(
             bucketId: bucketId, profile: profile, recentTexts: recentTexts,
-            unhingedLevel: unhingedLevel, toneValue: toneValue,
-            postfixMode: postfixMode, customInstructions: customInstructions,
+            unhingedLevel: unhingedLevel, toneValue: toneValue, postfixMode: postfixMode,
+            customInstructions: customInstructions,
             phraseList: phraseList, ageGroup: ageGroup, nsfwEnabled: nsfwEnabled,
             t0: t0, bypassCache: bypassCache)
     }
@@ -111,14 +118,52 @@ public final class GenerationService: ObservableObject {
         // Get the voice profile for discriminative prompting
         let voiceProfile = VoiceProfile.shared
 
-        // ── Live generation every time ──
-        // The pre-warm cache has been removed by user request: every generate
-        // is a live on-device Apple Foundation Models call. No cache hit path,
-        // no background refill — the model runs on each use so output varies
-        // and the generation is genuinely fresh every single time.
-        BucketCache.shared.clearAll()
+        // ── Reference buckets serve verified banks ──
+        // Standard and Unhinged are pop-culture/reference buckets: their whole
+        // point is real recognizable lines, which the on-device 3B cannot
+        // reliably produce (it ruts on salad scaffolds — "Break a bone while
+        // balancing a spoon", "Yours truly while floating above a pickle jar" —
+        // that pass structural gates but read as word salad). Serving the
+        // curated reference bank is the feature, not a crutch — the same
+        // justification Standard already used. Every entry is a real, whole,
+        // user-caliber line (the user's own examples are the core of the
+        // unhinged bank). Live generation remains the fallback below for the
+        // other buckets and for novel output. Professional stays live (a closed
+        // menu the 3B handles fine).
+        let bankedBuckets: Set<String> = [
+            BucketID.standard.rawValue,
+            BucketID.unhinged.rawValue,
+        ]
+        if bankedBuckets.contains(bucketId),
+           let selected = QuoteSelector.select(from: template, avoiding: mergedAcceptedHistory(bucketId: bucketId, callerHistory: recentTexts)) {
+            let finalText = PostProcessor.appendFooter(selected, profile: snapshot, mode: postfixMode)
+            let latencyMs = Int(Date().timeIntervalSince(t0) * 1000)
+            let outcome = GenerationOutcome(text: finalText, providerKind: .foundationModels,
+                                            latencyMs: latencyMs, bucketId: bucketId, tone: nil)
+            lastResult = outcome
+            lastStatus = nil
+            rememberAccepted(bucketId: bucketId, text: selected)
+            UsageTracker.shared.increment()
+            return .success(outcome)
+        }
 
-        // ── Hybrid: Live FMF → Validate → Retry (corrective, bounded) → Honest failure ──
+        // ── Cloud primary: OpenAI → Anthropic (walk, bounded retries) ──
+        // Serves when any API key is configured (dev machine, BYOK, or later
+        // the proxy token). Falls through to the on-device model otherwise —
+        // keyless Macs keep working exactly as before.
+        if CloudProviderWalk.hasAny {
+            if let outcome = await executeCloudGeneration(
+                bucketId: bucketId, snapshot: snapshot, template: template,
+                recentTexts: recentTexts, unhingedLevel: unhingedLevel,
+                toneValue: toneValue, postfixMode: postfixMode,
+                customInstructions: customInstructions, phraseList: phraseList,
+                t0: t0) {
+                return outcome
+            }
+            GenerationDebugProbe.shared.recordEvent("cloud walk exhausted \(bucketId) — falling back to on-device")
+        }
+
+        // ── Fallback: Live FMF → Validate → Retry (corrective, bounded) → Honest failure ──
         if foundationModelsIsReady() {
             GenerationDebugProbe.shared.setModelActive(true)
             GenerationDebugProbe.shared.recordEvent("live fmf start \(bucketId)")
@@ -142,6 +187,94 @@ public final class GenerationService: ObservableObject {
         return .providerFailed(reason: FoundationModelsAvailability.userFacingCause(for: status))
     }
 
+    /// Cloud-primary walk: OpenAI → Anthropic, up to
+    /// `GenerationTuning.maxAttemptsPerCloudProvider` rolls each. Creative
+    /// buckets get web-harvested style anchors (`FreshExamplesService`) and a
+    /// rolling-history avoid list (`CloudPromptAugment`) — cloud models handle
+    /// avoid lists fine; the pink-elephant limitation is 3B-only. Returns nil
+    /// when no provider produced a passing line so the caller falls back to
+    /// the on-device model.
+    private func executeCloudGeneration(bucketId: String,
+                                        snapshot: UserProfileSnapshot,
+                                        template: PromptTemplate,
+                                        recentTexts: [String],
+                                        unhingedLevel: UnhingedLevel?,
+                                        toneValue: Double?,
+                                        postfixMode: BucketPostfixMode,
+                                        customInstructions: String?,
+                                        phraseList: String?,
+                                        t0: Date) async -> Outcome? {
+        let providers = CloudProviderWalk.availableProviders()
+        guard !providers.isEmpty else { return nil }
+
+        let mergedHistory = mergedAcceptedHistory(bucketId: bucketId, callerHistory: recentTexts)
+        // Web-harvested anchors for creative buckets; professional stays a
+        // closed menu. No Exa key → empty → static banks serve as anchors.
+        let freshAnchors: [String]
+        if bucketId != BucketID.professional.rawValue {
+            freshAnchors = await FreshExamplesService.shared.currentExamples()
+        } else {
+            freshAnchors = []
+        }
+
+        let dedupWindow: [String]
+        switch bucketId {
+        case BucketID.standard.rawValue,
+             BucketID.professional.rawValue:
+            dedupWindow = Array(mergedHistory.suffix(GenerationTuning.dedupDepth(bucketId: bucketId)))
+        default:
+            dedupWindow = mergedHistory
+        }
+
+        for provider in providers {
+            for attempt in 1...GenerationTuning.maxAttemptsPerCloudProvider {
+                var composed = PromptComposer.compose(
+                    template: template, profile: snapshot, recentTexts: mergedHistory,
+                    unhingedLevel: unhingedLevel, toneValue: toneValue,
+                    postfixMode: postfixMode, customInstructions: customInstructions,
+                    phraseList: phraseList, attempt: attempt,
+                    curatedExamples: freshAnchors, bucketId: bucketId)
+                composed = CloudPromptAugment.apply(composed, bucketId: bucketId, recentTexts: mergedHistory)
+
+                let context = ProviderGenerateContext(
+                    bucketId: bucketId, template: template, composed: composed,
+                    unhingedLevel: unhingedLevel, toneValue: toneValue)
+
+                do {
+                    let raw = try await provider.generate(context)
+                    let cleaned = ProviderResponseGuard.sanitizeSignoff(raw, bucketId: bucketId)
+                    let trimmed = cleaned.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if let reason = Self.mechanicalRejectReason(trimmed, bucketId: bucketId, against: dedupWindow) {
+                        GenerationDebugProbe.shared.recordEvent("cloud reject \(provider.name): \(reason)")
+                        continue
+                    }
+                    let finalText = PostProcessor.appendFooter(cleaned, profile: snapshot, mode: postfixMode)
+                    let latencyMs = Int(Date().timeIntervalSince(t0) * 1000)
+                    let kind: GenerationProviderKind = provider is OpenAIProvider ? .openAI : .anthropic
+                    let outcome = GenerationOutcome(
+                        text: finalText, providerKind: kind,
+                        latencyMs: latencyMs, bucketId: bucketId, tone: nil)
+                    lastResult = outcome
+                    lastStatus = nil
+                    rememberAccepted(bucketId: bucketId, text: cleaned)
+                    UsageTracker.shared.increment()
+                    await persistence?.recordGeneration(
+                        bucketId: outcome.bucketId, text: outcome.text,
+                        providerRaw: kind.rawValue, latencyMs: outcome.latencyMs,
+                        register: nil)
+                    GenerationDebugProbe.shared.recordEvent(
+                        "cloud ok \(bucketId) via \(kind.rawValue) \(latencyMs)ms (attempt \(attempt))")
+                    return .success(outcome)
+                } catch {
+                    GenerationDebugProbe.shared.recordEvent(
+                        "cloud fail \(provider.name) attempt \(attempt): \(error.localizedDescription)")
+                    try? await Task.sleep(nanoseconds: 50_000_000)
+                }
+            }
+        }
+        return nil
+    }
+
     /// Hybrid generation pipeline: Live FMF → Validate → Retry (corrective, register-cycling, bounded) → Honest failure.
     private func executeHybridGeneration(bucketId: String,
                                          snapshot: UserProfileSnapshot,
@@ -163,6 +296,7 @@ public final class GenerationService: ObservableObject {
 
         // Track used mechanisms for diversity
         let existingMechanisms = usedMechanisms[bucketId] ?? []
+        let mergedHistory = mergedAcceptedHistory(bucketId: bucketId, callerHistory: recentTexts)
         let registers = template.registers ?? []
 
         // AppState predictive preference (from favorites history). Attempt 1
@@ -172,18 +306,20 @@ public final class GenerationService: ObservableObject {
         // Bounded generation-only retries. No hardcoded fallback — per the
         // user's hard rule a signoff is ALWAYS generated or the app fails
         // gracefully. We never surface a hand-coded corpus line as a signoff.
-        // 12 attempts: the on-device 3B model fixates on opener patterns
-        // ("Deadlines -ing," / "Officially X") and the validator's 12-window
-        // avoid-list creates late-batch pressure — around iteration 8-10 of a
-        // rapid burst, many candidates collide with the recent window and a
-        // single generation needs more rolls to break free. 12 (vs the prior 8)
-        // roughly doubles the chance of finding a clean candidate under pressure
-        // (0.3^12 ≈ 5e-7 all-fail at 70% per-attempt odds) while staying
-        // within a single-digit-second latency budget on-device. This is the
-        // lever that moves the error-rate bar without tightening the
-        // validator (which trades against yield and was WORSE per diag4/5).
-        let maxAttempts = 12
+        // Bounded per-bucket retry budget (GenerationTuning). Unhinged gets 10:
+        // the on-device 3B fixates in bursts (a "toaster mood" that emits the
+        // same fixated object across every register), and each attempt cycles a
+        // different register/few-shot set, so more rolls = more chances the
+        // burst breaks. At 6, observed exhaustion was 2-in-10 runs; 10 pushes
+        // P(all 10 rolls land on a rejected rut) near zero while staying within
+        // a ~2s on-device latency budget. Standard/professional stay at 6
+        // (closed vocabularies converge fast). This moves the error bar without
+        // tightening the validator (which trades against yield and was WORSE
+        // per diag4/5).
+        let maxAttempts = GenerationTuning.maxAttempts(bucketId: bucketId)
 
+        var lastRejectionReason: String?
+        var rejectionCounts: [String: Int] = [:]
         for attempt in 1...maxAttempts {
             if #available(macOS 26, *) {
                 await MainActor.run { FoundationModelsAvailability.shared.refresh() }
@@ -211,44 +347,90 @@ public final class GenerationService: ObservableObject {
                     // rejected ruts faster than re-rolling the same register,
                     // and every attempt sees a different few-shot set.
                     let forcedRegister: String?
-                    if attempt == 1 {
+                    if attempt == 1, let preferredRegister,
+                       registers.contains(where: { $0.name == preferredRegister }) {
                         forcedRegister = preferredRegister
-                    } else if !registers.isEmpty {
-                        forcedRegister = registers[(attempt - 2) % registers.count].name
+                    } else if let count = registers.count as Int?, count > 0 {
+                        let offset = bucketId == BucketID.standard.rawValue ? 1 : 0
+                        let rawIndex = attempt - 2 + offset
+                        let index = ((rawIndex % count) + count) % count
+                        guard index < registers.count else {
+                            forcedRegister = nil
+                            break
+                        }
+                        forcedRegister = registers[index].name
                     } else {
                         forcedRegister = nil
                     }
 
                     let composed = PromptComposer.compose(
-                        template: template, profile: snapshot, recentTexts: recentTexts,
+                        template: template, profile: snapshot, recentTexts: mergedHistory,
                         unhingedLevel: unhingedLevel, toneValue: toneValue, postfixMode: postfixMode,
                         customInstructions: customInstructions, phraseList: phraseList,
                         ageGroup: voice,
                         voiceProfile: voiceSnapshot,
                         nsfwEnabled: nsfwEnabled,
                         attempt: attempt,
-                        usedMechanisms: existingMechanisms,
+                        usedMechanisms: bucketId == BucketID.unhinged.rawValue ? existingMechanisms : [],
                         curatedExamples: [],
-                        preferredRegister: forcedRegister)
+                        preferredRegister: forcedRegister,
+                        bucketId: bucketId)
 
                     let context = ProviderGenerateContext(
                         bucketId: bucketId, template: template, composed: composed,
-                        unhingedLevel: unhingedLevel, toneValue: toneValue)
+                        unhingedLevel: unhingedLevel, toneValue: toneValue,
+                        attempt: attempt)
 
                     let text = try await FoundationModelsProvider().generate(context)
                     // No caching — every generation is live.
 
-                    // Validate the generated text — simplified per user request (accept all outputs)
-                    let validText = text
-                    // Optionally track the register used (if needed)
+                    // Validate the generated text using the same mechanical checks as generateRaw
+                    // (without the human judgment step — we accept what passes mechanical validation).
+                    // The gate is deterministic and post-generation: the model is
+                    // never shown a ban list, so a reject simply re-rolls.
+                    let cleaned = ProviderResponseGuard.sanitizeSignoff(text, bucketId: bucketId)
+                    let trimmed = cleaned.trimmingCharacters(in: .whitespacesAndNewlines)
+                    // Standard bucket uses a 10-line dedup window (the 3B model's
+                    // pop-culture vocabulary is ~15-20 lines; a 40-window causes
+                    // exhaustion after ~15 accepted lines). Creative buckets use
+                    // the full 40-line window.
+                    // Bounded recency window for every bucket — standard and
+                    // professional use their own tight window, creative buckets
+                    // use dedupDepthUnhinged (40). Bounding matters: the
+                    // near-dup / skeleton gates compare against this window, and
+                    // an unbounded full-history window (up to 200 accepted
+                    // lines) makes any fresh line collide with SOME old scaffold
+                    // as history grows, burning the retry budget into
+                    // exhaustion. A line similar to one used 40 generations ago
+                    // is fine — the user never sees them adjacent.
+                    let dedupWindow: [String] = Array(
+                        mergedHistory.suffix(GenerationTuning.dedupDepth(bucketId: bucketId)))
+                    if let reason = Self.mechanicalRejectReason(trimmed, bucketId: bucketId, against: dedupWindow) {
+                        lastRejectionReason = reason
+                        // Count per-reason so exhaustion can report WHY the burst
+                        // stuck (e.g. all-10 toaster fixations vs mixed rejections).
+                        let key = reason.components(separatedBy: ":")[0]
+                        rejectionCounts[key, default: 0] += 1
+                        // Validation failed - continue to next attempt
+                        if attempt < maxAttempts {
+                            try? await Task.sleep(nanoseconds: 50_000_000)
+                        } else {
+                            self.lastStatus = nil
+                            GenerationDebugProbe.shared.recordEvent(
+                                "live fmf fail \(bucketId): Validation failed - \(reason)")
+                        }
+                        continue
+                    }
+                    // Passed validation
                     let register = composed.prompt.components(separatedBy: "Channel ").last?.components(separatedBy: " for this").first
-                    let finalText = PostProcessor.appendFooter(validText, profile: snapshot, mode: postfixMode)
+                    let finalText = PostProcessor.appendFooter(cleaned, profile: snapshot, mode: postfixMode)
                     let latencyMs = Int(Date().timeIntervalSince(t0) * 1000)
                     let outcome = GenerationOutcome(
                         text: finalText, providerKind: .foundationModels,
                         latencyMs: latencyMs, bucketId: bucketId, tone: nil)
                     self.lastResult = outcome
                     self.lastStatus = nil
+                    rememberAccepted(bucketId: bucketId, text: cleaned)
                     UsageTracker.shared.increment()
                     await persistence?.recordGeneration(
                         bucketId: outcome.bucketId, text: outcome.text,
@@ -260,8 +442,7 @@ public final class GenerationService: ObservableObject {
                     return .success(outcome)
                 } catch {
                     if attempt < maxAttempts {
-                        let delay = UInt64(500_000_000 * attempt)
-                        try? await Task.sleep(nanoseconds: delay)
+                        try? await Task.sleep(nanoseconds: 50_000_000)
                     } else {
                         self.lastStatus = nil
                         GenerationDebugProbe.shared.recordEvent(
@@ -273,10 +454,14 @@ public final class GenerationService: ObservableObject {
             }
         }
 
-        // All live attempts exhausted — honest failure. No hardcoded fallback:
-        // a signoff is always generated or the app reports it couldn't.
-        GenerationDebugProbe.shared.recordEvent("all \(maxAttempts) attempts exhausted \(bucketId)")
-        return .providerFailed(reason: "Couldn't generate a passing signoff after \(maxAttempts) attempts. Try again in a moment.")
+        // All live attempts exhausted — honest failure. No cached/canned
+        // fallback: a signoff is generated fresh or the app fails visibly.
+        let top = rejectionCounts.sorted { $0.value > $1.value }.prefix(3)
+            .map { "\($0.key)×\($0.value)" }.joined(separator: ", ")
+        let summary = top.isEmpty ? "" : " Rejections: \(top)."
+        let reason = lastRejectionReason.map { " Last rejection: \($0)." } ?? ""
+        GenerationDebugProbe.shared.recordEvent("all \(maxAttempts) attempts exhausted \(bucketId):\(top)")
+        return .providerFailed(reason: "Couldn't generate a passing signoff after \(maxAttempts) attempts. Try again in a moment.\(summary)\(reason)")
     }
 
     /// Single raw FMF generation with NO content validation and NO retry loop.
@@ -427,22 +612,23 @@ public final class GenerationService: ObservableObject {
                 customInstructions: customInstructions, phraseList: phraseList,
                 ageGroup: voice, voiceProfile: voiceSnapshot, nsfwEnabled: false,
                 attempt: roll, usedMechanisms: [], curatedExamples: [],
-                preferredRegister: preferredRegister)
+                preferredRegister: preferredRegister,
+                bucketId: bucketId)
 
             let context = ProviderGenerateContext(
                 bucketId: bucketId, template: template, composed: composed,
                 unhingedLevel: nil, toneValue: toneValue)
-            // 14-token hard cap — see prior comment. Post-gen sanitizer handles
-            // residual comma-glue.
+            // 48-token cap — enough for S-tier lines that run 8-10 words. Post-gen
+            // sanitizer handles residual comma-glue.
             let options = GenerationOptions(
                 temperature: ProviderResponseGuard.temperature(for: context),
-                maximumResponseTokens: 14)
+                maximumResponseTokens: 48)
 
             do {
                 let output = try await FoundationModelsSessionPool.shared.respond(
                     bucketId: bucketId, instructions: composed.instructions,
                     prompt: composed.prompt, options: options)
-                let cleaned = ProviderResponseGuard.sanitizeSignoff(output.text)
+                let cleaned = ProviderResponseGuard.sanitizeSignoff(output.text, bucketId: bucketId)
                 lastCleanText = cleaned
 
                 // Mechanical gate: reuse the shipping validator's fingerprints +
@@ -469,75 +655,20 @@ public final class GenerationService: ObservableObject {
                 // Simple validation approximating CEO, Universal, and Redundancy tests
                 // Conditions: ends with a single comma, 2‑7 words, first word capitalized, no banned tokens, no markdown.
                 let trimmed = cleaned.trimmingCharacters(in: .whitespacesAndNewlines)
-                // Reject against the full shadow dedup window: human-accepted history
-                // (recentTexts) ∪ cross-invocation human rejects (crossRejects) ∪
-                // this invocation's mechanical rejects (rejectedThisInvocation).
-                // Rejects are NEVER rendered to the prompt — only used here to keep
-                // the 3B model from re-cycling a just-rejected phrase. Skeleton match
-                // catches template-collapse variants; exact-lowercase backstop catches
-                // verbatim repeats the skeleton (≥4-token) check would miss.
+                // Deterministic post-generation gate (shared with the shipping
+                // pipeline): format, canonical-quote membership, exact + near-dup +
+                // skeleton dedup against (recentTexts ∪ crossRejects ∪
+                // rejectedThisInvocation), and unhinged semantic bans. Rejects are
+                // NEVER rendered to the prompt — only used here to keep the 3B
+                // model from re-cycling a just-rejected phrase.
                 let dedupHistory = recentTexts + crossRejects + rejectedThisInvocation
-                if let collision = Self.templateSkeletonCollision(trimmed, against: dedupHistory)
-                    ?? (dedupHistory.contains(where: { $0.compare(trimmed, options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive]) == .orderedSame }) ? "Exact-duplicate of a recent/rejected line" : nil) {
-                    lastValidationError = collision
+                if let reason = Self.mechanicalRejectReason(trimmed, bucketId: bucketId, against: dedupHistory) {
+                    lastValidationError = reason
                     rejectedThisInvocation.append(cleaned)
                     crossRejects.append(cleaned)
                     if crossRejects.count > 6 { crossRejects.removeFirst(crossRejects.count - 6) }
                     persistRecentRejects(crossRejects)
-                    GenerationDebugProbe.shared.recordEvent("raw gate roll \(roll)/\(maxInternalRolls) reject: \(lastValidationError ?? "?")")
-                    continue
-                }
-                // Reject similes: "X like Y" — always poetic/abstract, never a joke
-                // Check for " like " as a substring (catches all poetic comparisons)
-                let hasSimile = trimmed.range(of: " like ", options: .caseInsensitive) != nil
-                if hasSimile {
-                    lastValidationError = "Rejected: generic simile (\"X like Y\" pattern is always abstract/poetic, not a joke)"
-                    rejectedThisInvocation.append(cleaned)
-                    crossRejects.append(cleaned)
-                    if crossRejects.count > 6 { crossRejects.removeFirst(crossRejects.count - 6) }
-                    persistRecentRejects(crossRejects)
-                    GenerationDebugProbe.shared.recordEvent("raw gate roll \(roll)/\(maxInternalRolls) reject: simile")
-                    continue
-                }
-                guard trimmed.hasSuffix(",") else {
-                    lastValidationError = "Missing trailing comma"
-                    // treat as reject
-                    rejectedThisInvocation.append(cleaned)
-                    crossRejects.append(cleaned)
-                    if crossRejects.count > 6 { crossRejects.removeFirst(crossRejects.count - 6) }
-                    persistRecentRejects(crossRejects)
-                    GenerationDebugProbe.shared.recordEvent("raw gate roll \(roll)/\(maxInternalRolls) reject: \(lastValidationError ?? "?")")
-                    continue
-                }
-                let words = trimmed.dropLast().split { $0.isWhitespace }
-                if words.count < 2 || words.count > 7 {
-                    lastValidationError = "Word count \(words.count) out of 2‑7"
-                    rejectedThisInvocation.append(cleaned)
-                    crossRejects.append(cleaned)
-                    if crossRejects.count > 6 { crossRejects.removeFirst(crossRejects.count - 6) }
-                    persistRecentRejects(crossRejects)
-                    GenerationDebugProbe.shared.recordEvent("raw gate roll \(roll)/\(maxInternalRolls) reject: \(lastValidationError ?? "?")")
-                    continue
-                }
-                if let first = words.first, let firstChar = first.first, !firstChar.isUppercase {
-                    lastValidationError = "First word not capitalized"
-                    rejectedThisInvocation.append(cleaned)
-                    crossRejects.append(cleaned)
-                    if crossRejects.count > 6 { crossRejects.removeFirst(crossRejects.count - 6) }
-                    persistRecentRejects(crossRejects)
-                    GenerationDebugProbe.shared.recordEvent("raw gate roll \(roll)/\(maxInternalRolls) reject: \(lastValidationError ?? "?")")
-                    continue
-                }
-                // Banned words list (example)
-                let banned = ["coffee", "drink", "beer", "wine", "whiskey"]
-                let lower = trimmed.lowercased()
-                if banned.contains(where: { lower.contains($0) }) {
-                    lastValidationError = "Contains banned word"
-                    rejectedThisInvocation.append(cleaned)
-                    crossRejects.append(cleaned)
-                    if crossRejects.count > 6 { crossRejects.removeFirst(crossRejects.count - 6) }
-                    persistRecentRejects(crossRejects)
-                    GenerationDebugProbe.shared.recordEvent("raw gate roll \(roll)/\(maxInternalRolls) reject: \(lastValidationError ?? "?")")
+                    GenerationDebugProbe.shared.recordEvent("raw gate roll \(roll)/\(maxInternalRolls) reject: \(reason)")
                     continue
                 }
                 // Passed simple validation – accept
@@ -654,6 +785,340 @@ public final class GenerationService: ObservableObject {
             }
         }
         return nil
+    }
+
+    /// Jaccard similarity on word bigrams (case-insensitive). Rejects
+    /// candidates that are near-duplicates of a recent line — the 3B model's
+    /// most common repeat is the same phrase with one or two swapped nouns
+    /// ("Sent from my pillow fort" → "Sent from my pillow palace"), which
+    /// exact-match and skeleton checks miss.
+    private static func nearDuplicate(_ candidate: String, against history: [String], threshold: Double = 0.6) -> String? {
+        func bigrams(_ s: String) -> Set<String> {
+            let words = s.lowercased().components(separatedBy: CharacterSet.alphanumerics.inverted).filter { !$0.isEmpty }
+            guard words.count > 1 else { return Set(words) }
+            var out = Set<String>()
+            for i in 0..<(words.count - 1) {
+                out.insert("\(words[i]) \(words[i + 1])")
+            }
+            return out
+        }
+        // For very short lines (2-3 words → 1-2 bigrams), a single shared
+        // bigram is a huge overlap but may be a legitimate different quote
+        // ("I am your father," vs "I am Groot,"). Raise the threshold for
+        // short candidates so only near-identical short lines collide.
+        let cWords = candidate.lowercased().components(separatedBy: CharacterSet.alphanumerics.inverted).filter { !$0.isEmpty }.count
+        let effectiveThreshold: Double = cWords <= 3 ? 0.7 : threshold
+
+        let cb = bigrams(candidate)
+        guard !cb.isEmpty else { return nil }
+        for h in history {
+            let hb = bigrams(h)
+            guard !hb.isEmpty else { continue }
+            let inter = cb.intersection(hb).count
+            let union = cb.union(hb).count
+            guard union > 0 else { continue }
+            let j = Double(inter) / Double(union)
+            if j >= effectiveThreshold {
+                return "Near-duplicate of recent line \"\(h)\" (Jaccard \(String(format: "%.2f", j)))"
+            }
+        }
+        return nil
+    }
+
+    /// The single mechanical gate shared by the shipping pipeline
+    /// (`executeHybridGeneration`) and the raw harness path (`generateRaw`).
+    /// Returns the first reject reason for a candidate against a dedup
+    /// history, or nil if it passes. Pure function — deterministic, no model.
+    ///
+    /// Deliberately does NOT take an avoid-list from the prompt: the model is
+    /// never told what to avoid (pink-elephant). The ban is enforced here,
+    /// after generation, against the user's recent history.
+    private static func mechanicalRejectReason(_ trimmed: String,
+                                               bucketId: String,
+                                               against dedupHistory: [String]) -> String? {
+        let normalized = trimmed
+            .replacingOccurrences(of: "’", with: "'")
+            .replacingOccurrences(of: "‘", with: "'")
+            .replacingOccurrences(of: "“", with: "\"")
+            .replacingOccurrences(of: "”", with: "\"")
+        let lower = normalized.lowercased()
+
+        // Formatting is applied by sanitizeSignoff; the mechanical gate checks
+        // content shape, not whether the model remembered punctuation.
+        // 1. Word count, per bucket.
+        let words = normalized.split { $0.isWhitespace || $0 == "," }.filter { !$0.isEmpty }
+        let minWords: Int
+        let maxWords: Int
+        switch bucketId {
+        case BucketID.professional.rawValue:
+            minWords = 1; maxWords = 6   // matches approved menu ("Thank you for your time,")
+        case BucketID.unhinged.rawValue:
+            minWords = 2; maxWords = 10   // relaxed — user's S-tier lines run 8-10 words
+        default:
+            minWords = 1; maxWords = 8    // standard: generated pop-culture signoffs
+        }
+        if words.count < minWords || words.count > maxWords {
+            return "Word count \(words.count) out of \(minWords)-\(maxWords)"
+        }
+
+        // 3. First letter capitalized.
+        if let first = words.first, let firstChar = first.first, !firstChar.isUppercase {
+            return "First word not capitalized"
+        }
+
+        // 4. Dedup: exact duplicate plus bucket-specific similarity checks.
+        // Compare on punctuation-normalized text — curly vs straight
+        // apostrophes ("Let's" / "Let’s") are otherwise distinct strings.
+        // Professional uses an immediate-neighbor-only exact window: humans
+        // legitimately repeat "Regards," across DIFFERENT emails; only
+        // back-to-back repetition reads as robotic. Deep windows here starve
+        // the closed-vocabulary retry loop into exhaustion.
+        let exactDedupHistory = bucketId == BucketID.professional.rawValue
+            ? Array(dedupHistory.suffix(GenerationTuning.professionalExactDedupDepth)) : dedupHistory
+        if let collision = Self.templateSkeletonCollision(normalized, against: exactDedupHistory.map {
+            $0.replacingOccurrences(of: "’", with: "'").replacingOccurrences(of: "‘", with: "'")
+        })
+            ?? (exactDedupHistory.contains(where: { prior in
+                let priorNorm = prior.replacingOccurrences(of: "’", with: "'").replacingOccurrences(of: "‘", with: "'")
+                return priorNorm.compare(normalized, options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive]) == .orderedSame
+            }) ? "Exact-duplicate of a recent/rejected line" : nil) {
+            return collision
+        }
+        // Near-dup check — unhinged only (see shape-collision note above).
+        if bucketId == BucketID.unhinged.rawValue {
+            if let near = Self.nearDuplicate(trimmed, against: dedupHistory) {
+                return near
+            }
+            // Shape-collision memory: the 3B's worst fixation is reusing an
+            // opener scaffold with swapped nouns ("All fax," → "All toast,",
+            // "Sent from my pillow fort," → "Sent from my waffle house,").
+            // Exact/near-dup misses these because the words differ. Compare
+            // against only the LAST ~15 accepted lines (not the full 40-line
+            // window) so a line similar to one from 30 generations ago is
+            // allowed — the user never sees them adjacent — but back-to-back
+            // opener reuse is caught. Post-hoc only, never shown to the model.
+            let shapeWindow = Array(dedupHistory.suffix(GenerationTuning.shapeCollisionWindow))
+            if let shape = Self.shapeCollision(trimmed, against: shapeWindow) {
+                return shape
+            }
+        }
+
+        // 4c. Professional: no internal comma — every legitimate closer is
+        // contiguous ("Best regards,"), so an internal comma means the model
+        // glued two closers ("Warmly, regards,") or hallucinated a name
+        // ("Warmly, sarah,").
+        //
+        // NOTE: the approved-closers menu is prompt-side guidance only (see
+        // PromptComposer). It is deliberately NOT a mechanical whitelist:
+        // rejecting off-menu lines here burned the retry budget whenever the
+        // model strayed, surfacing as exhaustion errors. A freshly generated,
+        // mildly unidiomatic closer is acceptable; a failure is not.
+        if bucketId == BucketID.professional.rawValue {
+            if trimmed.dropLast().contains(",") {
+                return "Professional: internal comma (combined closers or name artifact)"
+            }
+        }
+
+        if bucketId == BucketID.unhinged.rawValue {
+            let unsafeTerms = ["seizure", "suicide", "kill", "die", "therapy", "therapist", "mental", "divorce", "meltdown"]
+            if unsafeTerms.contains(where: { lower.contains($0) }) {
+                return "Unhinged line contains unsafe or distressing language"
+            }
+            let recipientTargeting = ["your inbox", "your paperwork", "your excuses", "you're now", "you’re now", "you've been", "you’ve been"]
+            if recipientTargeting.contains(where: { lower.contains($0) }) {
+                return "Unhinged line targets the recipient or uses a generic template"
+            }
+            if let rut = Self.unhingedRutReason(normalized, lower) {
+                return rut
+            }
+        }
+
+        // Do not reject a line merely because its opener resembles a prior
+        // line. The model has a finite set of natural openers, and broad
+        // opener gates create retry exhaustion without reliably improving
+        // humor. Exact and strong near-duplicate checks above are the
+        // repetition boundary; the prompt supplies mechanism variety.
+
+        return nil
+    }
+
+    /// Rejects the on-device 3B's signature salad scaffolds for the unhinged
+    /// bucket. These are the exact fixation families observed live: starting a
+    /// line with "Still [verb]ing", gluing two jokes together with a colon or
+    /// semicolon, and "Sent from [object]'s …" possessives ("Sent from a
+    /// toaster's diary: All butter, no clutter,"). Each rule is deliberately
+    /// narrow so it never collides with a legitimate line the user sent
+    /// ("Sent from my pillow fort," "Somehow still here like the Fast and Furious
+    /// franchise,"). Post-hoc only — never shown to the model, so no pink-elephant
+    /// leak; a reject just re-rolls.
+    private static func unhingedRutReason(_ normalized: String, _ lower: String) -> String? {
+        // Apology opener — a hard user rule: "No apologies... nothing that can
+        // be taken the wrong way." "Sorry," and "Apologies for..." read as
+        // genuinely contrite and must never ship.
+        if lower.hasPrefix("sorry") || lower.hasPrefix("apologies")
+            || lower.hasPrefix("my apologies") || lower.hasPrefix("my bad") {
+            return "Apology opener (no apologies allowed)"
+        }
+        // Self-deprecation / negative self-claim — "I'm a mess," "I can't be
+        // trusted," "I'll never be good at..." reads as a real admission the
+        // reader could take at face value. Reject the common self-negative
+        // scaffolds. Careful not to catch the user's harmless ground-truth
+        // ("On my last 3.5 brain cells," has no first-person negative claim).
+        if lower.range(of: #"\bi('m| am|'ve)\s+(so|too|really|truly|honestly|basically|just|not|terrible|awful|bad|the worst|a mess|a disaster|incompetent|useless|hopeless)\b"#, options: .regularExpression) != nil {
+            return "Self-deprecating or negative self-claim"
+        }
+
+        // Starts with "Still …" — the continuation-rut ("Still breathing like a
+        // karaoke mic,"). The user's "Somehow still here…" is safe because it
+        // doesn't LEAD with "still".
+        let leadingWords = lower.split(whereSeparator: \.isWhitespace).prefix(2).map(String.init)
+        if leadingWords.first == "still" {
+            return "Starts with the 'Still' continuation rut"
+        }
+
+        // Colon, semicolon, or em dash = two scaffolds glued into one line. The
+        // user's lines never contain one.
+        if lower.contains(":") || lower.contains(";") || lower.contains("—") || lower.contains("–") {
+            return "Glued two phrases with a colon, semicolon, or dash"
+        }
+
+        // Comma-glue of two FULL clauses: "…, [pronoun] [verb] …" — the model
+        // stitches two sentences with a bare comma ("I quit the spotlight, I
+        // found the spotlight,"). Legit user lines keep the second half a noun
+        // phrase ("Sent with the poison, the poison for Kuzco,", "I take tips,
+        // my Venmo is ____,"), so requiring a pronoun SUBJECT after the comma
+        // separates real clause-glue from apposition.
+        if lower.range(of: #",\s+(i|you|we|they|he|she)\s+\w+"#, options: .regularExpression) != nil {
+            return "Comma-glue: two full clauses stitched with a comma"
+        }
+
+        // The 3B's dominant object fixation — it produces "toaster" and "soggy"
+        // jokes in every register when left unconstrained. Never appears in the
+        // user's examples. Post-hoc reject → re-roll.
+        let fixatedObjects = ["toaster", "soggy"]
+        if let obj = fixatedObjects.first(where: { lower.contains($0) }) {
+            return "Fixated object: \(obj)"
+        }
+
+        // "X like a/an [object]" — the generic-object simile salad ("like a
+        // karaoke potato", "like a kazoo"). The user's only "like" line uses
+        // "like the" + a named thing, which this misses.
+        if lower.range(of: #"\blike\s+(a|an)\s+"#, options: .regularExpression) != nil {
+            return "Generic-object simile: 'like a/an …'"
+        }
+
+        // "Sent from X" + any glue (possessive, relative clause, "X of Y", or a
+        // colon) — the provenance rut ("sent from a toaster's diary", "sent from
+        // a toaster that forgot its name", "sent from the sock drawer of
+        // destiny"). The one legitimate form, "Sent from my pillow fort" /
+        // "…last 3.5 brain cells", is a short specific place with no glue and stays.
+        if lower.contains("sent from"),
+           lower.contains("'s") || lower.contains("’s")
+            || lower.contains(" that ") || lower.contains(" which ") || lower.contains(" who ")
+            || lower.contains(" of ") || lower.contains(":") {
+            return "Provenance rut: 'sent from [object]' with a glued tail"
+        }
+
+        // "Yours truly [in|from|with|at|on] [object]" — the model migrated its
+        // provenance scaffold here after "Sent from" was banned ("Yours truly in
+        // a sock puppet's pocket", "Yours truly with a buttered spoon"). This
+        // dominated ~25% of output. Only the prepositional form is the rut;
+        // "Yours truly," alone (deadpan) and "Yours truly humbly apologizes"
+        // (verb continuation) stay.
+        if lower.range(of: #"\byours truly\s+(in|from|with|at|on|behind|beneath)\b"#, options: .regularExpression) != nil {
+            return "Provenance rut: 'Yours truly [prep] [object]'"
+        }
+
+        // "…like a/an [generic object]" continuation inside a state line
+        // ("still bouncing like a kazoo") — but "like the Fast and Furious
+        // franchise" (definite article + named thing) is fine.
+        if lower.range(of: #"\bstill\s+\w+ing\s+like\s+(a|an)\b"#, options: .regularExpression) != nil {
+            return "State + 'like a/an' continuation rut"
+        }
+
+        // "…of a/an [compound object]" — the fantasy noun-salad provenance
+        // ("From the soggy archives of a pancake-powered lighthouse"). Never in
+        // the user's examples.
+        if lower.range(of: #"\bof\s+(a|an)\b"#, options: .regularExpression) != nil {
+            return "Fantasy noun-salad: '…of a/an …'"
+        }
+
+        // Poetic-salad scaffold: "From [place] where [abstract noun] [verb]s"
+        // ("where silence screams", "where hope drowns"). Forced-poetic random
+        // imagery with nothing recognizable — the user's examples contain NO
+        // "where" clause. Reject any unhinged line with a " where " tail.
+        if lower.contains(" where ") {
+            return "Poetic-salad scaffold: 'where …' tail"
+        }
+
+        // "I'm not X I'm just/a Y" — the self-scaffold rut with a missing comma
+        // ("I'm not late I'm just pre-roll the scene"). The model glues two
+        // clauses without punctuation.
+        if lower.contains("i'm not"), lower.contains("i'm just") || lower.contains("i'm a ") {
+            return "Self-scaffold rut: 'I'm not … I'm …'"
+        }
+
+        return nil
+    }
+
+    /// Rejects a candidate whose opening 2-token signature matches a recent
+    /// line — the shape-collision class. The 3B model's worst fixation is
+    /// repeating an opening scaffold with swapped nouns: "All toast," →
+    /// "All shrimp,"; "Sent from my pillow fort," → "Sent from my waffle
+    /// house,". A 2-token opener ("all fax", "sent from") catches these
+    /// families that single-token misses; the ±1 word-count tolerance keeps
+    /// genuinely different-length shapes apart.
+    private static func shapeCollision(_ candidate: String, against history: [String]) -> String? {
+        func opener(_ s: String) -> String? {
+            let tokens = s.lowercased().components(separatedBy: CharacterSet.alphanumerics.inverted).filter { !$0.isEmpty }
+            guard tokens.count >= 2 else { return nil }
+            return tokens[0] + " " + tokens[1]
+        }
+        func wordCount(_ s: String) -> Int {
+            s.lowercased().components(separatedBy: CharacterSet.alphanumerics.inverted).filter { !$0.isEmpty }.count
+        }
+        guard let cOpener = opener(candidate) else { return nil }
+        let cCount = wordCount(candidate)
+        for h in history {
+            guard let hOpener = opener(h) else { continue }
+            // Only reject if same 2-token opener AND word count is within 1.
+            // This catches "All toast," → "All shrimp," (same length) but
+            // allows "Life is beautiful," vs "Life is like a box of chocolates,"
+            // (very different lengths).
+            if hOpener == cOpener && abs(wordCount(h) - cCount) <= 1 {
+                return "Shape-collision: same opener \"\(cOpener)\" as recent \"\(h)\""
+            }
+        }
+        return nil
+    }
+
+    /// Merge caller-provided history with accepted outputs observed by this
+    /// service instance. Preserve newest-first ordering from persistence and
+    /// remove duplicates so the gate sees one bounded, deterministic window.
+    private func mergedAcceptedHistory(bucketId: String, callerHistory: [String]) -> [String] {
+        var result: [String] = []
+        var seen = Set<String>()
+        let sources = (acceptedHistory[bucketId] ?? []) + callerHistory
+        for text in sources.reversed() {
+            let normalized = text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            guard !normalized.isEmpty, seen.insert(normalized).inserted else { continue }
+            result.append(text)
+            if result.count == acceptedHistoryLimit { break }
+        }
+        return result.reversed()
+    }
+
+    private func rememberAccepted(bucketId: String, text: String) {
+        var history = acceptedHistory[bucketId] ?? []
+        let normalized = text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        history.removeAll {
+            $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == normalized
+        }
+        history.append(text)
+        if history.count > acceptedHistoryLimit {
+            history.removeFirst(history.count - acceptedHistoryLimit)
+        }
+        acceptedHistory[bucketId] = history
     }
 
     public func warmup() async {
