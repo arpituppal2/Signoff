@@ -56,6 +56,18 @@ import Foundation
         #expect(bad.isEmpty, "[\(bucket)] lines not ending in comma: \(bad)")
     }
 
+    @Test(arguments: buckets)
+    func noUnresolvedPlaceholders(bucket: String) async throws {
+        // PromptTemplate.load resolves dynamic tokens ({weekday}) per call, so a
+        // literal placeholder reaching a banked line means the shipping path
+        // would paste the raw token ("Not built for {weekday},") to a recipient.
+        // ("I take tips, my Venmo is ____," uses a deliberate stylistic blank, not
+        // template syntax, so only brace/bracket tokens are flagged.)
+        let t = try await PromptTemplate.load(bucket: bucket) ?? .fallback
+        let bad = t.positiveExamples.filter { $0.contains("{") || $0.contains("[") }
+        #expect(bad.isEmpty, "[\(bucket)] unresolved placeholders: \(bad)")
+    }
+
     private func bankLines(_ bucket: String) async throws -> [String] {
         let t = try await PromptTemplate.load(bucket: bucket) ?? .fallback
         return t.positiveExamples
