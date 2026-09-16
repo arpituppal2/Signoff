@@ -9,7 +9,11 @@ import Foundation
 /// rule-violating line would ship to a real recipient. Any future curation that
 /// reintroduces one fails here.
 @Suite struct BankSafetyTest {
-    private static let buckets = [BucketID.standard.rawValue, BucketID.unhinged.rawValue]
+    private static let buckets = [
+        BucketID.standard.rawValue,
+        BucketID.professional.rawValue,
+        BucketID.unhinged.rawValue,
+    ]
 
     @Test(arguments: buckets)
     func noApologyOpeners(bucket: String) async throws {
