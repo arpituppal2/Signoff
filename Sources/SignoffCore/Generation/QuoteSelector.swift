@@ -4,9 +4,9 @@ import Foundation
 ///
 /// Foundation Models is not used to fact-check or invent these lines. The
 /// template's references are the verified offline set. Selection prefers
-/// never-used lines first (rotating by calendar day for cross-session variety),
-/// then falls back to the least-recently-seen line once the whole bank has been
-/// used, so the rotation keeps advancing instead of locking onto one phrase.
+/// never-used lines first (randomized among them), then falls back to the
+/// least-recently-seen line once the whole bank has been used, so the rotation
+/// keeps advancing instead of locking onto one phrase.
 public enum QuoteSelector {
     public static func select(from template: PromptTemplate, avoiding recent: [String]) -> String? {
         let candidates = template.positiveExamples
