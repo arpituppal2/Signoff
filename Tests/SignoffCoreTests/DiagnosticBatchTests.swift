@@ -10,8 +10,16 @@ import Foundation
 @Suite(.serialized)
 struct DiagnosticBatchTests {
 
+    private func requireLiveTestsEnabled() throws {
+        guard ProcessInfo.processInfo.environment["SIGNOFF_RUN_LIVE_TESTS"] == "1" else {
+            throw NSError(domain: "SignoffLiveTests", code: 1,
+                          userInfo: [NSLocalizedDescriptionKey: "Set SIGNOFF_RUN_LIVE_TESTS=1 to run live Foundation Models tests."])
+        }
+    }
+
     private func runDiag(bucketId: String, tag: String, unhingedLevel: UnhingedLevel?,
                           toneValue: Double? = nil) async throws -> Int {
+        try requireLiveTestsEnabled()
         await GenerationService.shared.warmup()
         try? await Task.sleep(nanoseconds: 1_000_000_000)
         var results: [String] = []

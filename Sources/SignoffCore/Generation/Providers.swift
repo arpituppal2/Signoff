@@ -12,17 +12,24 @@ public struct ProviderGenerateContext: Sendable {
     public let composed: PromptComposer.Composed
     public let unhingedLevel: UnhingedLevel?
     public let toneValue: Double?
+    /// 1-based retry attempt within the caller's loop, when known. Lets the
+    /// temperature ramp up on later attempts so a fixated on-device model can
+    /// physically break a "toaster mood" instead of re-sampling the same
+    /// attractor at a fixed low temperature.
+    public let attempt: Int?
 
     public init(bucketId: String,
                 template: PromptTemplate,
                 composed: PromptComposer.Composed,
                 unhingedLevel: UnhingedLevel? = nil,
-                toneValue: Double? = nil) {
+                toneValue: Double? = nil,
+                attempt: Int? = nil) {
         self.bucketId = bucketId
         self.template = template
         self.composed = composed
         self.unhingedLevel = unhingedLevel
         self.toneValue = toneValue
+        self.attempt = attempt
     }
 }
 
@@ -42,7 +49,8 @@ public typealias GenerationProviderType = GenerationProvider
 /// Pure string gate used by every provider + GenerationService before paste.
 /// Optimized with pre-compiled NSRegularExpression for multi-pattern matching.
 /// NSRegularExpression is thread-safe for read-only matching operations.
-enum ProviderResponseGuard {
+/// Public so harness/bench executables apply the same format gate as shipping.
+public enum ProviderResponseGuard {
     static let refusalMarkers: [String] = [
         "i can't help",
         "i cannot help",
@@ -60,46 +68,6 @@ enum ProviderResponseGuard {
         return try! NSRegularExpression(pattern: pattern, options: .caseInsensitive)
     }()
     static let refusalRegex: NSRegularExpression = _refusalRegex
-
-    /// Guard words that must not appear in output (from quality validator).
-    private static let guardWords: [String] = [
-        "premium", "text matrix", "matrix",
-        "forgotten", "fourth eye", "4th eye",
-        "dreaming", "keyboard dreams",
-        "surprisingly", "honestly", "aligned", "effortlessly",
-        "ghost inbox", "phantom priorit", "stale optim",
-        "typing feels like", "traffic prefers", "counting sheep",
-        "collaboration felt", "valued input", "steady groove",
-        "steady rhythm", "synergy", "journey", "path forward",
-        "vision", "meaningful dialogue", "grateful for the opportunity",
-        "transformative", "partnership", "appreciate the clarity",
-        "looking forward to continued collaboration", "inbox fumes",
-        "feeding on stale", "running on ghost", "running on phantom"
-    ]
-
-    /// Pre-compiled regex for guard word matching (case-insensitive, word-boundary aware).
-    private static let _guardWordsRegex: NSRegularExpression = {
-        let pattern = guardWords.map { NSRegularExpression.escapedPattern(for: $0) }.joined(separator: "|")
-        return try! NSRegularExpression(pattern: pattern, options: .caseInsensitive)
-    }()
-    static let guardWordsRegex: NSRegularExpression = _guardWordsRegex
-
-    /// Banned n-grams for template reuse detection.
-    private static let bannedNGrams: [String] = [
-        "felt natural", "aligned effortlessly", "valued input shaped",
-        "collaboration felt", "steady rhythm", "steady groove",
-        "ghost inbox", "phantom priorities", "stale optimism",
-        "inbox fumes", "feeding on",
-        "premium", "text matrix", "forgotten", "fourth eye",
-        "keyboard dreams"
-    ]
-
-    /// Pre-compiled regex for n-gram matching.
-    private static let _bannedNGramsRegex: NSRegularExpression = {
-        let pattern = bannedNGrams.map { NSRegularExpression.escapedPattern(for: $0) }.joined(separator: "|")
-        return try! NSRegularExpression(pattern: pattern, options: .caseInsensitive)
-    }()
-    static let bannedNGramsRegex: NSRegularExpression = _bannedNGramsRegex
 
     /// Professional bucket additional banned words.
     private static let _professionalBannedRegex: NSRegularExpression = {
@@ -127,11 +95,6 @@ enum ProviderResponseGuard {
         refusalRegex.firstMatch(in: text, options: [], range: NSRange(location: 0, length: text.utf16.count)) != nil
     }
 
-    /// Check if text contains any banned guard words using pre-compiled regex.
-    static func containsGuardWord(_ text: String) -> Bool {
-        guardWordsRegex.firstMatch(in: text, options: [], range: NSRange(location: 0, length: text.utf16.count)) != nil
-    }
-
     /// True only for non-empty, non-refusal text.
     static func isPasteable(_ text: String) -> Bool {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -140,7 +103,7 @@ enum ProviderResponseGuard {
     }
 
     /// Trims, rejects empty + refusal-shaped strings.
-    static func validatedPasteable(_ text: String, provider: String) throws -> String {
+    public static func validatedPasteable(_ text: String, provider: String) throws -> String {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
             throw GenerationError.unsafeCandidate(reason: "empty \(provider) response")
@@ -148,23 +111,10 @@ enum ProviderResponseGuard {
         if looksLikeRefusal(trimmed) {
             throw GenerationError.refused(reason: trimmed)
         }
-        return trimmed
-    }
-
-    /// Validates against guard words. Throws guardrailViolation if banned word found.
-    /// Uses pre-compiled regex for O(1) matching instead of O(n) linear scan.
-    static func validatedAgainstGuardWords(_ text: String, provider: String) throws -> String {
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        if containsGuardWord(trimmed) {
-            throw GenerationError.guardrailViolation(reason: "Output contains banned word/phrase")
-        }
-        return trimmed
-    }
-
-    static func validatedAgainstBannedNGrams(_ text: String) throws -> String {
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        if bannedNGramsRegex.firstMatch(in: trimmed, options: [], range: NSRange(location: 0, length: trimmed.utf16.count)) != nil {
-            throw GenerationError.guardrailViolation(reason: "Output contains banned n-gram")
+        let lowercased = trimmed.lowercased()
+        let leakedFormattingTerms = ["comma", "period", "exclamation mark", "question mark", "output only", "as an ai"]
+        if leakedFormattingTerms.contains(where: { lowercased.contains($0) }) {
+            throw GenerationError.unsafeCandidate(reason: "formatting instruction leaked into output")
         }
         return trimmed
     }
@@ -178,7 +128,7 @@ enum ProviderResponseGuard {
     }
 
     static func validatedCynical(_ text: String) throws -> String {
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         if unsafePatternsRegex.firstMatch(in: trimmed, options: [], range: NSRange(location: 0, length: trimmed.utf16.count)) != nil {
             throw GenerationError.guardrailViolation(reason: "Cynical bucket contains unsafe content")
         }
@@ -203,102 +153,37 @@ enum ProviderResponseGuard {
         return trimmed
     }
 
-    /// Strips trailing period/exclamation that the model sometimes appends after
-    /// the required trailing comma (e.g. "Brain freeze, activated,." → "Brain freeze, activated,"),
-    /// then guarantees exactly one trailing comma.
-    static func sanitizeSignoff(_ text: String) -> String {
-        // ── Deterministic format guardrails (do not rely on the 3B model for syntax) ──
-        // 1. Take only the first non-empty line — kills multi-line/multi-sentence
-        //    runaways on the spot (Apple exposes no stopSequences, so a rant that
-        //    fits the token cap still arrives here as several lines/commas; this is
-        //    where we cut it to one).
+    /// Normalizes the product format after semantic generation.
+    /// first word capitalized. Deliberately MINIMAL — the mid-line truncation
+    /// surgery and punctuation fixup loops were 3B-era compensation; run-ons
+    /// and over-length lines are rejected by `validatedLength` instead (a
+    /// rejected candidate simply re-rolls), and cloud models emit clean format.
+    public static func sanitizeSignoff(_ text: String, bucketId: String? = nil) -> String {
+        // 1. First non-empty line only — kills multi-line runaways.
         var cleaned = text
             .components(separatedBy: .newlines)
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .first(where: { !$0.isEmpty }) ?? ""
-
-        // 2. Strip surrounding quotes, dashes, and markdown bullet markers.
+        // 2. Strip wrapping quotes/dashes/markdown bullets.
         cleaned = cleaned
             .trimmingCharacters(in: CharacterSet(charactersIn: "\"-'•*#[]`"))
             .trimmingCharacters(in: .whitespaces)
-
-        // 3. Mid-line punctuation artifacts: a comma-joined runaway like
-        //    "Baked beans on toast, a breakfast delight, a culinary," is the
-        //    3B model's most stubborn failure — it glues clauses with commas.
-        //    When a line has MORE THAN ONE comma, truncate to the text up to and
-        //    including the FIRST comma and discard the run-on tail. A real
-        //    1-7-word signoff has at most one comma (the trailing one). This is
-        //    deterministic: the first clause is always the intended closer; the
-        //    rest is sampled glue. ("With queso on top," → 1 comma, untouched.)
-        let firstComma = cleaned.firstIndex(of: ",")
-        if let cutLeft = firstComma {
-            // Check if we should avoid truncation for legitimate internal commas
-            // Specifically, if the first segment (before first comma) is 1 word,
-            // it's likely a legitimate quote with internal comma (e.g. "Elementary, my dear Watson,")
-            let firstSegment = String(cleaned[..<cutLeft])
-            let firstSegmentWords = firstSegment.split { $0.isWhitespace }.filter { !$0.isEmpty }
-            if firstSegmentWords.count == 1 {
-                // Likely a legitimate internal comma, don't truncate
-                // (e.g. "Elementary, my dear Watson," or "Hello, Jerry,")
-            } else {
-                // Check for runaway: if there's another comma after the first one
-                let remainder = cleaned[cutLeft...].dropFirst()
-                if remainder.contains(",") {
-                    // Only truncate if the SECOND comma is present → it's a glue-runaway.
-                    cleaned = String(cleaned[...cutLeft])
-                    // After truncation the first clause may still have a stray inner
-                    // comma-free tail of whitespace; trim it.
-                    cleaned = cleaned.trimmingCharacters(in: .whitespacesAndNewlines)
-                    if cleaned.hasSuffix(",") { /* keep the one comma */ }
-                }
-            }
-        }
-        // Collapse any remaining doubled+ commas ("a,,," → "a,").
+        // 3. Collapse doubled commas, strip trailing sentence punctuation.
         while cleaned.contains(",,") {
             cleaned = cleaned.replacingOccurrences(of: ",,", with: ",")
         }
-        cleaned = cleaned.trimmingCharacters(in: .whitespacesAndNewlines)
-        // Collapse ",." ", !" ", ?" (with or without space) → ","
-        while cleaned.hasSuffix(",.") || cleaned.hasSuffix(", .") || cleaned.hasSuffix(",!") || cleaned.hasSuffix(", !") || cleaned.hasSuffix(",?") || cleaned.hasSuffix(", ?") {
-            // Find the comma and keep everything up to and including it
-            if let commaIdx = cleaned.lastIndex(of: ",") {
-                cleaned = String(cleaned[...commaIdx])
-            } else {
-                cleaned.removeLast()
-            }
-        }
-        // Strip any remaining trailing period / exclamation / question mark.
-        while let last = cleaned.last, last == "." || last == "!" || last == "?" {
+        while let last = cleaned.last, ".!?".contains(last) {
             cleaned.removeLast()
+            cleaned = cleaned.trimmingCharacters(in: .whitespaces)
         }
-        // Trim again after stripping punctuation.
-        cleaned = cleaned.trimmingCharacters(in: .whitespacesAndNewlines)
-        // Strip trailing "comma" word if model wrote it out (e.g. "phrase comma" → "phrase,")
-        let lower = cleaned.lowercased()
-        if lower.hasSuffix(" comma") || lower.hasSuffix(" comma,") || lower.hasSuffix(" comma.") {
-            // Remove " comma" or " comma," or " comma." and ensure trailing comma
-            // " comma" = 6 chars, " comma," = 7 chars, " comma." = 7 chars
-            if lower.hasSuffix(" comma,") {
-                cleaned.removeLast(7)
-            } else if lower.hasSuffix(" comma.") {
-                cleaned.removeLast(7)
-            } else {
-                cleaned.removeLast(6)
-            }
-            cleaned = cleaned.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !cleaned.hasSuffix(",") {
-                cleaned.append(",")
-            }
-        }
-        // Collapse trailing double commas.
-        while cleaned.hasSuffix(",,") {
+        while cleaned.hasSuffix(",") {
             cleaned.removeLast()
+            cleaned = cleaned.trimmingCharacters(in: .whitespaces)
         }
-        // Ensure exactly one trailing comma.
-        if !cleaned.hasSuffix(",") {
+        // 4. Exactly one trailing comma + capitalized first word.
+        if !cleaned.isEmpty {
             cleaned.append(",")
         }
-        // Capitalize the first letter (deterministic — model casing is unreliable).
         if let first = cleaned.first, first.isLetter {
             cleaned = String(first).uppercased() + cleaned.dropFirst()
         }
@@ -327,11 +212,29 @@ enum ProviderResponseGuard {
         //   model closer to the register few-shot examples; register-cycling +
         //   the validator's dedup/rut fingerprints handle diversity.
         switch context.bucketId {
-        case "professional": return 0.7  // Higher for more variation in professional
-        case "unhinged": return 0.6
-        case "standard": return 0.3  // Lower temperature for quotes bucket to focus on recall
-        default: return 0.65 // fallback to standard
+        case "professional": return GenerationTuning.temperatureProfessional  // 0.3 converges onto closers already in dedup; 0.7 glued closers. 0.55 spreads mass without glue.
+        case "unhinged": return Self.rampedUnhingedTemperature(attempt: context.attempt)
+        case "standard": return GenerationTuning.temperatureStandard
+        default: return GenerationTuning.temperatureDefault
         }
+    }
+
+    /// Unhinged temperature with a per-attempt ramp. Attempt 1 stays at the
+    /// grounded base (0.68) so the first roll hugs the register few-shots and
+    /// is most likely to be a clean, on-taste line. Each rejected attempt then
+    /// raises the temperature ~0.02 up to a 0.82 ceiling — enough to widen the
+    /// sample and escape a "toaster mood" / "All X, no Y" attractor, but low
+    /// enough that the model still honors the "subvert something recognizable"
+    /// instruction. A higher ceiling (0.95, tried) breaks the lock but the
+    /// model ignores the prompt and emits random poetic salad ("soggy sock
+    /// drawer where silence screams"), which is worse than an honest failure.
+    /// A nil attempt (e.g. generateRaw single-roll) uses the base unchanged.
+    @available(macOS 26, *)
+    static func rampedUnhingedTemperature(attempt: Int?) -> Double {
+        guard let attempt, attempt > 1 else { return GenerationTuning.temperatureUnhinged }
+        let base = GenerationTuning.temperatureUnhinged
+        let ramp = min(Double(attempt - 1) * 0.02, 0.14)
+        return min(base + ramp, 0.82)
     }
 }
 
@@ -353,54 +256,25 @@ public struct FoundationModelsProvider: GenerationProvider {
             )
         }
 
-        // Retry up to 3 times on guard word violations
-        var lastError: (any Error)?
-        for attempt in 1...3 {
-            let output: SignoffOutput
-            do {
-                output = try await FoundationModelsSessionPool.shared.respond(
-                    bucketId: context.bucketId,
-                    instructions: context.composed.instructions,
-                    prompt: context.composed.prompt,
-                    options: Self.generationOptions(for: context)
-                )
-            } catch {
-                throw error
-            }
-            let sanitized = ProviderResponseGuard.sanitizeSignoff(output.text)
-            let pasteable = try ProviderResponseGuard.validatedPasteable(sanitized, provider: "FMF")
-            let lengthValidated = try ProviderResponseGuard.validatedLength(pasteable)
-
-            do {
-                // Validate against guard words and banned n-grams
-                let guardWordChecked = try ProviderResponseGuard.validatedAgainstGuardWords(lengthValidated, provider: "FMF")
-                let bannedNGramChecked = try ProviderResponseGuard.validatedAgainstBannedNGrams(guardWordChecked)
-
-                let finalChecked: String
-                switch context.bucketId {
-                case "professional":
-                    finalChecked = try ProviderResponseGuard.validatedProfessional(bannedNGramChecked)
-                case "unhinged":
-                    finalChecked = try ProviderResponseGuard.validatedCynical(bannedNGramChecked)
-                default:
-                    finalChecked = bannedNGramChecked
-                }
-                return finalChecked
-            } catch {
-                lastError = error
-                if attempt < 3 {
-                    continue
-                }
-            }
+        // Single roll — this is now the OFFLINE FALLBACK path; the caller
+        // owns retries. Safety/format gates are per-bucket below.
+        let output: SignoffOutput = try await FoundationModelsSessionPool.shared.respond(
+            bucketId: context.bucketId,
+            instructions: context.composed.instructions,
+            prompt: context.composed.prompt,
+            options: Self.generationOptions(for: context)
+        )
+        let sanitized = ProviderResponseGuard.sanitizeSignoff(output.text, bucketId: context.bucketId)
+        let pasteable = try ProviderResponseGuard.validatedPasteable(sanitized, provider: "FMF")
+        let lengthValidated = try ProviderResponseGuard.validatedLength(pasteable)
+        switch context.bucketId {
+        case "professional":
+            return try ProviderResponseGuard.validatedProfessional(lengthValidated)
+        case "unhinged":
+            return try ProviderResponseGuard.validatedCynical(lengthValidated)
+        default:
+            return lengthValidated
         }
-
-        // If we exhausted retries on guardrail, throw the last error
-        if let lastError {
-            throw lastError
-        }
-
-        // Fallback - should not reach here
-        throw GenerationError.guardrailViolation(reason: "Output contains banned word/phrase after retries")
 #else
         throw GenerationError.unavailable(
             reason: "FoundationModels module not available in this SDK"

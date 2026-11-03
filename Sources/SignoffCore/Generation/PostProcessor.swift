@@ -20,9 +20,11 @@ public struct PostProcessor: Sendable {
         return t
     }
 
-    /// Append profile footer based on mode.
+    /// Append profile footer based on mode. Also resolves dynamic tokens in
+    /// case the model literally echoed one (e.g. "Not built for {weekday},").
     public static func appendFooter(_ text: String, profile: UserProfileSnapshot, mode: BucketPostfixMode) -> String {
-        let cleaned = ensurePunctuation(text)
+        let tokenResolved = DynamicTokens.resolve(text)
+        let cleaned = ensurePunctuation(tokenResolved)
         switch mode {
         case .nothing:
             return cleaned

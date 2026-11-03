@@ -11,6 +11,13 @@ struct GenerationQualityTests {
     private let service = GenerationService.shared
     private let buckets = ["standard", "professional", "unhinged"]
 
+    private func requireLiveTestsEnabled() throws {
+        guard ProcessInfo.processInfo.environment["SIGNOFF_RUN_LIVE_TESTS"] == "1" else {
+            throw NSError(domain: "SignoffLiveTests", code: 1,
+                          userInfo: [NSLocalizedDescriptionKey: "Set SIGNOFF_RUN_LIVE_TESTS=1 to run live Foundation Models tests."])
+        }
+    }
+
     /// A signoff is a single clean line. Its terminus may be a comma (the
     /// conventional closer: "Best regards,"), a period (a punchy finished
     /// fragment: "Not built for Mondays."), or a bare letter (a fragment that
@@ -46,6 +53,7 @@ struct GenerationQualityTests {
 
     @Test("Standard bucket generates quality signoffs")
     func standardBucketGeneratesQualitySignoffs() async throws {
+        try requireLiveTestsEnabled()
         try await warmup()
         var results: [String] = []
 
@@ -90,6 +98,7 @@ struct GenerationQualityTests {
 
     @Test("Professional bucket generates quality signoffs")
     func professionalBucketGeneratesQualitySignoffs() async throws {
+        try requireLiveTestsEnabled()
         try await warmup()
         var results: [String] = []
 
@@ -128,6 +137,7 @@ struct GenerationQualityTests {
 
     @Test("Unhinged bucket generates quality signoffs")
     func unhingedBucketGeneratesQualitySignoffs() async throws {
+        try requireLiveTestsEnabled()
         try await warmup()
         var results: [String] = []
 

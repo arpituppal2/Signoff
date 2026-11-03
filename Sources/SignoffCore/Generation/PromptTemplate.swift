@@ -76,9 +76,11 @@ public extension PromptTemplate {
         // "quotes" file which contains the approved pop‑culture signoffs.
         let resource = (bucket == BucketID.standard.rawValue) ? "quotes" : bucket
 
-        // Static cache to avoid repeated JSON parsing
+        // Static cache stores the RAW decoded template; dynamic tokens
+        // ({weekday}) are resolved per call so long-running processes pick up
+        // day changes without relaunch (see DynamicTokens).
         if let cached = await PromptTemplateCache.shared.get(resource) {
-            return cached
+            return cached.resolvingDynamicTokens()
         }
 
         guard let url = Bundle.module.url(
@@ -94,7 +96,7 @@ public extension PromptTemplate {
         do {
             let decoded = try JSONDecoder().decode(PromptTemplate.self, from: data)
             await PromptTemplateCache.shared.set(resource, decoded)
-            return decoded
+            return decoded.resolvingDynamicTokens()
         } catch {
             return nil
         }

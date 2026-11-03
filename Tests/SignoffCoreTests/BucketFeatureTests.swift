@@ -9,10 +9,10 @@ struct BucketFeatureTests {
 
     // MARK: - Bucket defaults
 
-    @Test("Default buckets are Normal, Professional, Cynical")
+    @Test("Default buckets are Quotes, Professional, Cynical")
     func defaultBucketsAreNormalProfessionalCynical() {
         let buckets = Bucket.defaultBuckets()
-        #expect(buckets.map(\.name) == ["Normal", "Professional", "Cynical"])
+        #expect(buckets.map(\.name) == ["Quotes", "Professional", "Cynical"])
         #expect(buckets.map(\.id) == [
             BucketID.standard.rawValue,
             BucketID.professional.rawValue,

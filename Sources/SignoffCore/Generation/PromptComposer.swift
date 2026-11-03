@@ -52,7 +52,8 @@ public enum PromptComposer: Sendable {
         attempt: Int = 1,
         usedMechanisms: [String] = [],
         curatedExamples: [String] = [],
-        preferredRegister: String? = nil
+        preferredRegister: String? = nil,
+        bucketId: String? = nil
     ) -> Composed {
         let instructions = makeInstructions(from: template)
         let (userVariant, selectedRegister) = chooseUserVariantAndRegister(
@@ -70,19 +71,23 @@ public enum PromptComposer: Sendable {
             register: selectedRegister,
             attempt: attempt,
             usedMechanisms: usedMechanisms,
-            curatedExamples: curatedExamples)
+            curatedExamples: curatedExamples,
+            bucketId: bucketId)
+        let effectiveRecentTexts = recentTexts
         let variableTail = makeVariableTail(
             profile: profile,
-            recentTexts: recentTexts,
+            recentTexts: effectiveRecentTexts,
             customInstructions: customInstructions,
             phraseList: phraseList,
-            voiceProfile: voiceProfile
+            voiceProfile: voiceProfile,
+            bucketId: bucketId,
+            attempt: attempt
         )
         let prompt: String
         if variableTail.isEmpty {
-            prompt = promptPrefix + "\n\nRespond with only the signoff text."
+            prompt = promptPrefix
         } else {
-            prompt = promptPrefix + "\n\n" + variableTail + "\n\nRespond with only the signoff text."
+            prompt = promptPrefix + "\n\n" + variableTail
         }
         return Composed(instructions: instructions, prompt: prompt, promptPrefix: promptPrefix)
     }
@@ -142,7 +147,8 @@ public enum PromptComposer: Sendable {
         register: PromptTemplate.Register?,
         attempt: Int = 1,
         usedMechanisms: [String] = [],
-        curatedExamples: [String] = []
+        curatedExamples: [String] = [],
+        bucketId: String? = nil
     ) -> String {
         var sections: [String] = [userVariant]
 
@@ -155,35 +161,58 @@ public enum PromptComposer: Sendable {
         // witty registers (feigned-indifference, inverted-closer, …) actually
         // surface instead of being silently overridden by example themes.
         if let cue = register?.cue, !cue.isEmpty {
-            sections.append("This register is: \(cue)")
+            sections.append("Tone: \(cue)")
         }
 
         // Use register-specific examples for few-shot if available
         let fewShotExamples = register?.examples ?? positiveExamples
         if !fewShotExamples.isEmpty {
-            let exampleList = fewShotExamples.prefix(8).map { "- \($0)" }.joined(separator: "\n")
-            sections.append("Examples of the exact feeling to channel — these are STYLE REFERENCES ONLY. Never output any of these lines verbatim, and never reuse their opening scaffold (e.g. \"Issued by my…\", \"Delivered by…\", \"Per my…\", \"With queso on top,\"). Invent a COMPLETELY NOVEL line in the same register:\n\(exampleList)")
+            let examples = Array(fewShotExamples.prefix(GenerationTuning.fewShotExampleCount))
+            let exampleList = examples.map { "- \($0)" }.joined(separator: "\n")
+            sections.append("A few examples of the desired taste:\n\(exampleList)")
+        }
+
+        // Professional is a CLOSED vocabulary bucket: show the entire approved
+        // menu so the model picks from it instead of inventing ("Formal
+        // courtesy,"). The whitelist gate in GenerationService enforces this.
+        if bucketId == BucketID.professional.rawValue, !positiveExamples.isEmpty {
+            let menu = positiveExamples.map { "- \($0)" }.joined(separator: "\n")
+            sections.append("APPROVED CLOSERS MENU — choose ONE line from this menu (or a trivial variant of one):\n\(menu)")
         }
 
         // Add curated examples for additional few-shot prompting (positive only)
         if !curatedExamples.isEmpty {
             let exampleList = curatedExamples.map { "- \($0)" }.joined(separator: "\n")
-            sections.append("Additional style examples:\n\(exampleList)")
+            sections.append("More examples:\n\(exampleList)")
         }
 
         // Add corrective instruction on retries
         if attempt > 1 {
-            var corrective = "Previous attempt rejected. Produce a DIFFERENT, higher-quality signoff."
+            var corrective = "Try again with a different idea. Keep it natural, specific, and immediately understandable."
             if !usedMechanisms.isEmpty {
                 corrective += " Avoid these registers: \(usedMechanisms.joined(separator: ", "))."
             }
-            corrective += " Be concise. No narration. No quotes. No markdown. Do not copy any signoff from training or examples. Invent a FRESH one in the SAME emotional register. End with ONE COMMA. Capitalize ONLY the first word."
+
+            if bucketId == "standard" {
+                corrective += " Generate a DIFFERENT, genuinely recognizable pop-culture reference from another film, TV show, meme, ad, song, game, or internet phrase. Do not write an original motivational sentence, compliment, or aphorism."
+            } else if bucketId == BucketID.unhinged.rawValue {
+                corrective += " Use one clean joke, not a pile of images. No narration, quotes, markdown, generic encouragement, or random nouns."
+            } else if bucketId == BucketID.standard.rawValue {
+                corrective += " Use a famous existing phrase. Do not invent or paraphrase one."
+            } else {
+                corrective += " Use one plain, familiar closing. Do not combine closers."
+            }
+
             sections.append(corrective)
         }
 
         // One-shot diversity nudge (first attempt)
-        if attempt == 1 {
-            sections.append("CRITICAL: Generate a FRESH signoff in the requested emotional register. Do NOT copy from any examples. End with ONE COMMA. Capitalize ONLY the first word.")
+        if attempt == 1 && bucketId != BucketID.standard.rawValue {
+            sections.append("Use one clear idea and stop. Output only the phrase.")
+        } else if bucketId == "standard" {
+            // Every attempt, not just the first — this is the failure mode
+            // that matters for this bucket.
+            sections.append("CRITICAL: The output MUST be a REAL quote, slogan, catchphrase, or meme a stranger would recognize. It must NOT be an original sentence you composed. Before answering, verify the source exists. If you cannot recall one, output your single favorite famous line instead of inventing.")
         }
 
         return sections.joined(separator: "\n\n")
@@ -195,7 +224,9 @@ public enum PromptComposer: Sendable {
         recentTexts: [String],
         customInstructions: String?,
         phraseList: String?,
-        voiceProfile: VoiceProfileSnapshot? = nil
+        voiceProfile: VoiceProfileSnapshot? = nil,
+        bucketId: String? = nil,
+        attempt: Int = 1
     ) -> String {
         var sections: [String] = []
 
@@ -208,41 +239,60 @@ public enum PromptComposer: Sendable {
             sections.append("Phrase list:\n\(list)")
         }
 
-        // Avoid-list window: 8, not 6. The on-device 3B model fixates on
-        // opener patterns, and a too-small window lets a rut-shape fall out
-        // of view before the model rotates away from it (observed: the model
-        // re-produced a phrase the moment it left the 6-window). An 8-window
-        // keeps recent outputs — good (for shape rotation) and recently
-        // rejected (for rut suppression) — visible long enough to break a rut
-        // while still leaving room to generate. This is intentionally
-        // NARROWER than the validator's rut-comparison window (suffix 12 for
-        // Jaccard + opening/closing fingerprints) — the prompt avoid-list
-        // tells the MODEL what not to repeat; the validator enforces
-        // no-similarity against a broader recent burst. The earlier concern
-        // that a wide window causes burst-exhaustion applies to the 8-attempt
-        // hybrid slate (executeHybridGeneration), not the single-shot raw
-        // generateRaw path, which has no retry slate to exhaust.
-        let avoid = recentTexts
-            .suffix(8)
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
-        if !avoid.isEmpty {
-            // Pink-elephant-resistant framing. A literal "do not repeat X, Y, Z"
-            // ban-list foregrounds the exact tokens (e.g. "toaster") and the
-            // 3B model fixates on them, copying the banned noun into the next
-            // output ("Not signed by the toaster,"). Reframe the recent lines
-            // as a STYLE REFERENCE and lead with the POSITIVE rotation
-            // directive ("use a completely different subject/object/word"), so
-            // the model's attention lands on "pick something new" rather than
-            // on the noun we told it to avoid. The list still surfaces recent
-            // phrases (required for dedup), but they read as exemplars to
-            // diverge from, not forbidden tokens to obsess over.
-            sections.append(
-                "Recent signoffs — for style reference only. Write in the same kind of humor, "
-                + "but use a COMPLETELY different subject on this line. Never reuse any concrete "
-                + "object, name, catchphrase, or word that appears in any line below:\n"
-                + avoid.map { "- \($0)" }.joined(separator: "\n"))
+        if bucketId == BucketID.professional.rawValue {
+            // Closed-vocabulary redirect: professional closers are a finite
+            // menu, so explicitly naming recent ones steers sampling without
+            // the pink-elephant effect seen on creative buckets. Without
+            // this the model re-emits favorites until every gate blocks it
+            // and the retry loop exhausts.
+            let recentClosers = recentTexts.suffix(GenerationTuning.professionalAvoidListDepth)
+            if !recentClosers.isEmpty {
+                let listed = recentClosers.map { "- \($0)" }.joined(separator: "\n")
+                sections.append("Closers ALREADY USED in this conversation — do NOT repeat them or trivial variants of them:\n\(listed)")
+            }
         }
+
+        if bucketId == BucketID.unhinged.rawValue {
+            // Anchor rotation. The on-device 3B cannot reliably SUMMON a
+            // recognizable phrase to twist from nothing — left abstract it
+            // defaults to lazy scaffolds ("All X, no Y", random provenance
+            // salad). But it CAN reliably twist a phrase it is handed. So the
+            // rotation feeds it a concrete recognizable idiom/line to subvert
+            // per attempt (raw material, NOT a finished signoff — this is not
+            // a bank). A handful of mechanism lanes stay in the rotation so
+            // the non-phrase ground-truth categories (inverted closer,
+            // impossible premise) still get exercised. Rotating per attempt
+            // means every retry gets a fresh anchor, which both diversifies
+            // output and pulls the model off the "All X, no Y" attractor.
+            let anchors = [
+                "Twist this recognizable phrase into a signoff: 'break a leg'",
+                "Twist this recognizable phrase into a signoff: 'the early bird gets the worm'",
+                "Politely subvert a formal closer so it is obviously sarcastic",
+                "Twist this recognizable phrase into a signoff: 'when life gives you lemons'",
+                "Twist this recognizable phrase into a signoff: 'a watched pot never boils'",
+                "Make a light impossible-premise joke about yourself",
+                "Twist this recognizable phrase into a signoff: 'actions speak louder than words'",
+                "Twist this recognizable phrase into a signoff: 'curiosity killed the cat'",
+                "Claim an absurd 'sent from' origin with one specific silly detail",
+                "Twist this recognizable phrase into a signoff: 'the ball is in your court'",
+                "Twist this recognizable phrase into a signoff: 'burn the midnight oil'",
+                "Use a recognizable pop-culture callback as the punchline",
+                "Twist this recognizable phrase into a signoff: 'every cloud has a silver lining'",
+                "Twist this recognizable phrase into a signoff: 'let sleeping dogs lie'",
+            ]
+            let index = abs((attempt - 1) % anchors.count)
+            sections.append("\(anchors[index]). One clean twist, then stop.")
+        }
+
+        // NOTE: there is deliberately NO "recent signoffs / avoid-list" block
+        // for ANY bucket. Feeding the model its own recent lines as a "never
+        // reuse these words" list triggers the pink-elephant effect on the
+        // on-device 3B model (it foregrounds and copies the very words it's
+        // told to avoid), which is the root cause of the repetition complaint.
+        // Repetition is enforced deterministically AFTER generation in
+        // GenerationService.mechanicalRejectReason (exact + near-dup Jaccard
+        // + skeleton collision against recent history), which re-rolls until
+        // a fresh line surfaces.
 
         var profileLines: [String] = []
         if !profile.selfDescription.isEmpty {

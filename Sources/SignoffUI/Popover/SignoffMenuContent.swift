@@ -5,19 +5,26 @@ import os.log
 
 /// Menu content for MenuBarExtra — the primary, always-available surface.
 ///
-/// Layout philosophy: a calm, single-column surface that reads like a native
-/// macOS utility. Top = Voice picker (compact segmented control), Middle =
-/// Result area (the generated signoff), Bottom = Primary action + minimal footer.
-///
-/// Hierarchy: "Generate & Paste" is the single primary action. Voice selection
-/// is compact. Footer has icon-only utility buttons with native tooltips.
-/// No decorative borders, no giant empty panels, no text labels in chrome.
+// Layout philosophy: a calm, single-column surface that reads like a native
+// macOS utility. Top = Voice picker (compact segmented control), Middle =
+// Result area (the generated signoff), Bottom = Primary action + minimal footer.
+//
+// Hierarchy: "Generate & Paste" is the single primary action. Voice selection
+// is compact. Footer has icon-only utility buttons with native tooltips.
+// No decorative borders, no giant empty panels, no text labels in chrome.
 @MainActor
 public struct SignoffMenuContent: View {
     @Environment(AppState.self) private var appState
     @Environment(\.colorScheme) private var scheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.openWindow) private var openWindow
+
+    // MARK: - Supporting Views and Enums
+
+    private enum PopoverRoute {
+        case main
+        case history
+    }
 
     // Toast state for copy confirmation
     @State private var showCopyToast = false
@@ -97,11 +104,8 @@ public struct SignoffMenuContent: View {
         .background(.regularMaterial)
     }
 
-    /// Routes the popover between the main generate surface and the in-popover
-    /// history list. The history route reuses `HistoryListContent` (the same
-    /// rows/window/Settings-tab component), sized to the 340pt popover with a
-    /// back chevron that flips back to `.main`. `onGenerate` drives the
-    /// empty-state button straight into the main generate flow.
+    // MARK: - Content Routing
+
     @ViewBuilder
     private var contentForRoute: some View {
         switch route {
@@ -156,7 +160,7 @@ public struct SignoffMenuContent: View {
     private var voicePickerSection: some View {
         VStack(spacing: Brand.Layout.spacingXS) {
             HStack(spacing: Brand.Layout.spacingXS) {
-                ForEach(appState.buckets, id: \.id) { bucket in
+                ForEach(appState.buckets, id: \.id) { (bucket: Bucket) in
                     voiceSegment(for: bucket)
                 }
             }
@@ -227,14 +231,34 @@ public struct SignoffMenuContent: View {
     private var primaryActionButton: some View {
         Button {
             NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .now)
-            Task { await appState.generateNow(shouldAutoPaste: true) }
+
+            // Handle footer bucket specially
+            if appState.isFooterVoiceSelected {
+                // Check if footer is configured
+                let hasFooter = !appState.settings.afterSignoffText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+
+                if hasFooter {
+                    // Footer is configured - just paste it
+                    Task {
+                        await appState.pasteAfterSignoffOnly()
+                    }
+                } else {
+                    // No footer configured - show error instead of generating
+                    appState.generatedText = "No footer set. Please configure an 'After signoff' in Settings → General."
+                }
+            } else {
+                // Not footer bucket - generate and paste normally
+                Task { await appState.generateNow(shouldAutoPaste: true) }
+            }
         } label: {
             HStack(spacing: Brand.Layout.spacingS) {
-                Image(systemName: isGenerating ? "signature" : "arrow.right.to.line")
+                Image(systemName: primaryActionIconName)
                     .font(.system(size: 13, weight: isGenerating ? .medium : .semibold))
-                    .foregroundStyle(isGenerating ? Brand.ember(for: scheme) : .primary)
+                    .foregroundStyle(buttonIconColor)
                     .symbolEffect(.pulse, options: .repeating, isActive: isGenerating && !reduceMotion)
-                Text("Generate & Paste")
+
+                // Dynamic text based on footer configuration
+                Text(buttonTitle)
                     .font(Brand.Typography.callout.weight(.semibold))
                     .lineLimit(1)
             }
@@ -243,10 +267,23 @@ public struct SignoffMenuContent: View {
         }
         .buttonStyle(.borderedProminent)
         .controlSize(.large)
-        .tint(Brand.ember(for: scheme))
-        .disabled(isGenerating || appState.selectedBucket == nil)
-        .accessibilityHint("Generate a signoff and paste it at your cursor.")
+        .background(buttonBackgroundColor)
+        .foregroundColor(buttonIconColor)
+        .disabled(!buttonIsEnabled)
+        .accessibilityHint(buttonAccessibilityHint)
         .sensoryFeedback(.impact, trigger: appState.generatedText)
+    }
+
+    private var primaryActionIconName: String {
+        if isGenerating {
+            return "signature"
+        } else if appState.isFooterVoiceSelected {
+            // Footer bucket - show clipboard if footer configured, otherwise plus
+            return !appState.settings.afterSignoffText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "doc.on.clipboard" : "plus"
+        } else {
+            // Regular buckets - show arrow
+            return "arrow.right.to.line"
+        }
     }
 
     // MARK: - Footer (Icon-only utility buttons)
@@ -331,6 +368,68 @@ public struct SignoffMenuContent: View {
         !appState.settings.afterSignoffText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
+    // MARK: - Button State Helpers
+
+    private var buttonTitle: String {
+        if isGenerating {
+            return "Generating..."
+        }
+        // Footer bucket special cases
+        if appState.isFooterVoiceSelected {
+            return hasAfterSignoffFooter ? "Paste" : "Add footer"
+        }
+        return "Generate & Paste"
+    }
+
+    private var buttonIconColor: Color {
+        if isGenerating {
+            return Brand.ember(for: scheme)
+        }
+        // Footer bucket special cases
+        if appState.isFooterVoiceSelected {
+            return hasAfterSignoffFooter ? Brand.ember(for: scheme) : Brand.Ink.secondary(for: scheme)
+        }
+        // Non-footer buckets - use secondary color when not generating
+        return Brand.Ink.secondary(for: scheme)
+    }
+
+    private var buttonBackgroundColor: Color {
+        if isGenerating {
+            return Brand.Surface.card(for: scheme).opacity(0.1)
+        }
+        // Footer bucket special cases
+        if appState.isFooterVoiceSelected {
+            return hasAfterSignoffFooter ?
+                Brand.Surface.card(for: scheme).opacity(0.08) :
+                Brand.Surface.divider(for: scheme).opacity(0.1)
+        }
+        // Non-footer buckets - transparent background when not generating
+        return Brand.Surface.divider(for: scheme).opacity(0.1)
+    }
+
+    private var buttonIsEnabled: Bool {
+        return !isGenerating && appState.selectedBucket != nil
+    }
+
+    private var buttonAccessibilityHint: String {
+        if isGenerating {
+            return "Generating signoff..."
+        }
+        // Footer bucket special cases
+        if appState.isFooterVoiceSelected {
+            if hasAfterSignoffFooter {
+                return "Paste your configured After signoff footer at the cursor"
+            } else {
+                return "No footer set. Please configure an 'After signoff' in Settings → General"
+            }
+        }
+        if hasAfterSignoffFooter {
+            return "Paste your configured After signoff footer at the cursor"
+        } else {
+            return "Generate a signoff with your configured After signoff footer"
+        }
+    }
+
     /// One-shot: open the hidden Settings-context window so its
     /// `@Environment(\.openSettings)` + `.onReceive` stay live for the app
     /// lifetime. Without this, `SettingsContextView` never instantiates and
@@ -339,51 +438,7 @@ public struct SignoffMenuContent: View {
     /// its own `.onAppear`.
     private static var didOpenSettingsContext = false
 
-    private func ensureSettingsContextWindow() {
-        guard !Self.didOpenSettingsContext else { return }
-        Self.didOpenSettingsContext = true
-        openWindow(id: "signoff.settings-context")
-    }
-
-    private func openSettings() {
-        // Make the context window live first (subscribes the .onReceive),
-        // then activate (we run under .accessory — without this the Settings
-        // window opens behind everything and never becomes key), then post.
-        ensureSettingsContextWindow()
-        NSApp.activate(ignoringOtherApps: true)
-        NotificationCenter.default.post(name: .openSettingsShortcutTriggered, object: nil)
-    }
-
-    /// Opens the Settings window routed to the History tab — the "detailed
-    /// view" affordance from the popover's compact in-place history (the
-    /// command-icon button opposite the back chevron). The Settings-context
-    /// window is alive from launch (MenuBarLabelView opens it), so we just
-    /// activate and post the routed notification; `SettingsView` reads
-    /// `note.object as? SettingsPane` and switches to the History tab. Flips
-    /// the popover back to `.main` so it's clean when the user returns.
-    private func openHistoryInSettings() {
-        NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .now)
-        ensureSettingsContextWindow()
-        NSApp.activate(ignoringOtherApps: true)
-        NotificationCenter.default.post(name: .openSettingsShortcutTriggered, object: SettingsPane.history)
-        withAnimation(Brand.Motion.safe(.easeInOut(duration: 0.2), reduceMotion: reduceMotion)) {
-            route = .main
-        }
-    }
-
-    private func openHistoryInPopover() {
-        NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .now)
-        withAnimation(Brand.Motion.safe(.easeInOut(duration: 0.2), reduceMotion: reduceMotion)) {
-            route = .history
-        }
-    }
-
-    private enum PopoverRoute {
-        case main
-        case history
-    }
-
-    // MARK: - Initialization
+    // MARK: - Helpers
 
     private func initializeIfNeeded() async {
         FoundationModelsAvailability.shared.refresh()
@@ -397,7 +452,12 @@ public struct SignoffMenuContent: View {
         }
     }
 
-    // MARK: - Helpers
+    private func ensureSettingsContextWindow() {
+        if !Self.didOpenSettingsContext {
+            Self.didOpenSettingsContext = true
+            openWindow(id: "signoff.settings.context")
+        }
+    }
 
     private func failureFromStoreRecovery(_ recovery: StoreRecovery?) -> SignoffFailure? {
         switch recovery {
@@ -436,6 +496,39 @@ public struct SignoffMenuContent: View {
             withAnimation(Brand.Motion.safe(.easeOut(duration: 0.2), reduceMotion: reduceMotion)) {
                 showCopyToast = false
             }
+        }
+    }
+
+    private func openSettings() {
+        // Make the context window live first (subscribes the .onReceive),
+        // then activate (we run under .accessory — without this the Settings
+        // window opens behind everything and never becomes key), then post.
+        ensureSettingsContextWindow()
+        NSApp.activate(ignoringOtherApps: true)
+        NotificationCenter.default.post(name: .openSettingsShortcutTriggered, object: nil)
+    }
+
+    /// Opens the Settings window routed to the History tab — the "detailed
+    /// view" affordance from the popover's compact in-place history (the
+    /// command-icon button opposite the back chevron). The Settings-context
+    /// window is alive from launch (MenuBarLabelView opens it), so we just
+    /// activate and post the routed notification; `SettingsView` reads
+    /// `note.object as? SettingsPane` and switches to the History tab. Flips
+    /// the popover back to `.main` so it's clean when the user returns.
+    private func openHistoryInSettings() {
+        NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .now)
+        ensureSettingsContextWindow()
+        NSApp.activate(ignoringOtherApps: true)
+        NotificationCenter.default.post(name: .openSettingsShortcutTriggered, object: SettingsPane.history)
+        withAnimation(Brand.Motion.safe(.easeInOut(duration: 0.2), reduceMotion: reduceMotion)) {
+            route = .main
+        }
+    }
+
+    private func openHistoryInPopover() {
+        NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .now)
+        withAnimation(Brand.Motion.safe(.easeInOut(duration: 0.2), reduceMotion: reduceMotion)) {
+            route = .history
         }
     }
 }
@@ -694,7 +787,7 @@ private struct SplashOverlay: View {
     }
 
     /// Drives the full sequence once. Task is tied to the overlay's lifetime —
-    /// if the overlay is torn down early (e.g. popover dismissed), the Task is
+    /// if the venue is torn down early (e.g. popover dismissed), the Task is
     /// cancelled and the sleeps bail out; no orphaned state mutations.
     /// Includes a 3-second hard timeout as a fallback to ensure the splash never
     /// blocks UI if animations stall.

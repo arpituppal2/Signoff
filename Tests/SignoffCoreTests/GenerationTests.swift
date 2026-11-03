@@ -15,11 +15,15 @@ struct GenerationTests {
         #expect(GenerationProviderKind.foundationModels.rawValue == "fmf")
     }
 
-    @Test("Provider kind single case only")
-    func providerKindSingleCaseOnly() {
+    @Test("Provider kind covers on-device and cloud")
+    func providerKindCoversOnDeviceAndCloud() {
         let all = GenerationProviderKind.allCases
-        #expect(all == [.foundationModels])
+        #expect(all == [.foundationModels, .openAI, .anthropic])
         #expect(GenerationProviderKind.foundationModels.isLiveOnDevice == true)
+        #expect(GenerationProviderKind.openAI.isCloud == true)
+        #expect(GenerationProviderKind.anthropic.isCloud == true)
+        #expect(GenerationProviderKind.openAI.rawValue == "openai")
+        #expect(GenerationProviderKind.anthropic.rawValue == "anthropic")
     }
 
     // MARK: - GenerationService public surface (smoke)

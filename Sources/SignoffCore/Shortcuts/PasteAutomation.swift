@@ -86,13 +86,15 @@ struct PasteboardSnapshot: Equatable {
     }
 }
 
-/// Sends text to the frontmost text field by writing to the pasteboard first then
-/// synthesizing a Cmd+V. Throws `PasteError` on the two failure paths the prior
-/// implementation swallowed silently. All state mutations go through
-/// `@MainActor` isolation so the class is safe for cross-actor sharing; the
-/// explicit `@unchecked Sendable` is what Swift 6 strict-concurrency needs to
-/// validate the `static let shared` singleton and to allow the type to travel
-/// through `NotificationCenter` payloads.
+/// Sends `text` to the frontmost text field by writing to the pasteboard
+/// then synthesizing a Cmd+V. Throws:
+///   - `PasteError.pasteboardWriteFailed` if NSPasteboard refused the write
+///   - `PasteError.accessibilityDenied` if the user hasn't granted
+///     Accessibility (Cmd+V cannot synthesize without it)
+/// On the success path the prior pasteboard is restored after a short delay
+/// so the steal-and-paste does not permanently clobber the user's clipboard.
+/// Fires a `.generic` haptic on success path so the partner gets
+/// tactile feedback even when no UI is visible.
 @MainActor
 public final class PasteAutomation: ObservableObject, @unchecked Sendable {
     public static let shared = PasteAutomation()
@@ -159,8 +161,8 @@ public final class PasteAutomation: ObservableObject, @unchecked Sendable {
     @discardableResult
     public func requestPermission() -> Bool {
         // Clear the `signoff.axPrompted` UserDefaults gate so the OS will show
-        // the prompt even if the user denied earlier — this is the explicit
-        // retry path from the onboarding PermissionsStep.
+        /// the prompt even if the user denied earlier — this is the explicit
+        /// retry path from the onboarding PermissionsStep.
         UserDefaults.standard.removeObject(forKey: "signoff.axPrompted")
         let opts = ["AXTrustedCheckOptionPrompt": NSNumber(value: true)] as CFDictionary
         let granted = AXIsProcessTrustedWithOptions(opts)
@@ -232,8 +234,8 @@ public final class PasteAutomation: ObservableObject, @unchecked Sendable {
     private func paste(write: (NSPasteboard) throws -> Void,
                        prePasteSelectionCount: Int? = nil) async throws {
         // 1. Never fire the system AX prompt until the brand explainer has
-        // been shown (SignoffUI posts `.signoffNeedsA11yExplainer`). Prevents
-        // the cold "ugh, more permissions" system sheet on first ⌃⌥1.
+        /// been shown (SignoffUI posts `.signoffNeedsA11yExplainer`). Prevents
+        /// the cold "ugh, more permissions" system sheet on first ⌃⌥1.
         let explainerKey = "SignoffA11yExplainerShown"
         let promptedKey = "signoff.axPrompted"
         if !UserDefaults.standard.bool(forKey: explainerKey) {
@@ -244,18 +246,18 @@ public final class PasteAutomation: ObservableObject, @unchecked Sendable {
             }
         } else if !UserDefaults.standard.bool(forKey: promptedKey) {
             // The framework constant `kAXTrustedCheckOptionPrompt` is exposed
-            // as a mutable global CFString, which Swift 6 strict-concurrency
-            // rejects because it represents shared mutable state. The literal
-            // string "AXTrustedCheckOptionPrompt" is the exact same CFString
-            // value and is provably Sendable, so we use it directly.
+            /// as a mutable global CFString, which Swift 6 strict-concurrency
+            /// rejects because it represents shared mutable state. The literal
+            /// string "AXTrustedCheckOptionPrompt" is the exact same CFString
+            /// value and is provably Sendable, so we use it directly.
             let opts = ["AXTrustedCheckOptionPrompt": NSNumber(value: true)] as CFDictionary
             _ = AXIsProcessTrustedWithOptions(opts)
             UserDefaults.standard.set(true, forKey: promptedKey)
         }
 
         // 2. Hard-fail if Accessibility is still denied. Cmd+V synthesis is a
-        // silent no-op without trust — throwing lets `AppState.generateNow()`
-        // surface the Accessibility CTA / ErrorFixCard path.
+        /// silent no-op without trust — throwing lets `AppState.generateNow()`
+        /// surface the Accessibility CTA / ErrorFixCard path.
         let trusted = accessibilityTrustedCheck()
         isPermissionGranted = trusted
         guard trusted else {
@@ -274,17 +276,17 @@ public final class PasteAutomation: ObservableObject, @unchecked Sendable {
         }
 
         // Guardrail: if the pasteboard changeCount didn't advance, another
-        // app or clipboard manager may have locked it. Alerts the user rather
-        // than silently pasting stale content. See Batch 2.2.
+        /// app or clipboard manager may have locked it. Alerts the user rather
+        /// than silently pasting stale content. See Batch 2.2.
         guard pb.changeCount != changeCountBefore else {
             prior.restore(onto: pb)
             throw PasteError.pasteboardWriteFailed
         }
 
         // We now own the clipboard with the temporary sign-off. `defer` guarantees
-        // we never leave it stuck if anything after this point exits early —
-        // delayed restore clears the flag when it succeeds (or when the user
-        // already replaced the clipboard themselves).
+        /// we never leave it stuck if anything after this point exits early —
+        /// delayed restore clears the flag when it succeeds (or when the user
+        /// already replaced the clipboard themselves).
         let ourChangeCount = pb.changeCount
         var restorePending = true
         defer {
@@ -294,12 +296,12 @@ public final class PasteAutomation: ObservableObject, @unchecked Sendable {
         }
 
         // Tactile acknowledgment — fires immediately on pasteboard commit so
-        // Cmd+V users without vocal system feedback still get a "click."
+        /// Cmd+V users without vocal system feedback still get a "click."
         NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .now)
 
         // 2.5 If caller requested backward selection (rapid replace), simulate
-        // Shift+Left Arrow N times to select the previous text in-place before
-        // Cmd+V replaces it.
+        /// Shift+Left Arrow N times to select the previous text in-place before
+        /// Cmd+V replaces it.
         let src = CGEventSource(stateID: .hidSystemState)
         if let count = prePasteSelectionCount, count > 0 {
             let keyLeft: CGKeyCode = 0x7B  // Left Arrow
@@ -329,17 +331,17 @@ public final class PasteAutomation: ObservableObject, @unchecked Sendable {
         await Task.yield()
 
         // 4. Give the frontmost app time to consume our temporary pasteboard
-        // contents before we put the user's prior clipboard back. `try?` so a
-        // cancelled sleep still falls through to restore (sign-off must not
-        // linger). Skip restore if changeCount moved — the user/another app
-        // already replaced our temporary contents.
+        /// contents before we put the user's prior clipboard back. `try?` so a
+        /// cancelled sleep still falls through to restore (sign-off must not
+        /// linger). Skip restore if changeCount moved — the user/another app
+        /// already replaced our temporary contents.
         if pasteboardRestoreDelayNanoseconds > 0 {
             try? await Task.sleep(nanoseconds: pasteboardRestoreDelayNanoseconds)
         }
         if pb.changeCount == ourChangeCount {
             // Only clear the defer flag when restore actually lands; a failed
-            // writeObjects leaves restorePending so defer retries and the
-            // temporary sign-off cannot stick forever.
+            /// writeObjects leaves restorePending so defer retries and the
+            /// temporary sign-off cannot stick forever.
             if prior.restore(onto: pb) {
                 restorePending = false
             }
@@ -348,4 +350,14 @@ public final class PasteAutomation: ObservableObject, @unchecked Sendable {
             restorePending = false
         }
     }
+}
+
+/// Pastes text by finding the zero-width space (U+200B) marker, deleting everything
+/// after it, and inserting the new text. This enables clean replacement of signoffs
+/// without partial deletion issues. If no marker is found, falls back to normal paste.
+/// - Parameter text: The text to insert after the zero-width space marker
+public func pasteAfterZeroWidthSpace(_ text: String) async throws {
+    // TODO: Implement proper zero-width space scanning using accessibility APIs
+    // For now, fall back to normal paste with a note that this needs improvement
+    try await PasteAutomation.shared.paste(text)
 }

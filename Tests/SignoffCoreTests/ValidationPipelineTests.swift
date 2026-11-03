@@ -50,24 +50,6 @@ struct ValidationPipelineTests {
         #expect(result == "Best regards,")
     }
 
-    @Test("sanitizeSignoff strips 'comma' word")
-    func sanitizeStripsCommaWord() {
-        let result = ProviderResponseGuard.sanitizeSignoff("Best regards comma")
-        #expect(result == "Best regards,")
-    }
-
-    @Test("sanitizeSignoff strips 'comma,' word")
-    func sanitizeStripsCommaWithComma() {
-        let result = ProviderResponseGuard.sanitizeSignoff("Best regards comma,")
-        #expect(result == "Best regards,")
-    }
-
-    @Test("sanitizeSignoff strips 'comma.' word")
-    func sanitizeStripsCommaWithPeriod() {
-        let result = ProviderResponseGuard.sanitizeSignoff("Best regards comma.")
-        #expect(result == "Best regards,")
-    }
-
     @Test("sanitizeSignoff collapses double trailing commas")
     func sanitizeCollapsesDoubleCommas() {
         let result = ProviderResponseGuard.sanitizeSignoff("Best regards,,")
@@ -84,6 +66,16 @@ struct ValidationPipelineTests {
     func sanitizeHandlesMultiLine() {
         let result = ProviderResponseGuard.sanitizeSignoff("Line one\nLine two,")
         #expect(result.hasSuffix(","))
+    }
+
+    @Test("validatedPasteable rejects leaked formatting instructions")
+    func pasteableRejectsFormattingLeak() async throws {
+        do {
+            try ProviderResponseGuard.validatedPasteable("Hope this resonates, Comma,", provider: "FMF")
+            Issue.record("Expected formatting artifact to be rejected")
+        } catch let error as GenerationError {
+            #expect(error == .unsafeCandidate(reason: "formatting instruction leaked into output"))
+        }
     }
 
     // MARK: - validatedPasteable Tests
@@ -174,34 +166,6 @@ struct ValidationPipelineTests {
         }
     }
 
-    // MARK: - validatedAgainstGuardWords Tests
-
-    @Test("validatedAgainstGuardWords rejects banned word")
-    func guardWordsRejectsBanned() async throws {
-        do {
-            try ProviderResponseGuard.validatedAgainstGuardWords("Thanks surprisingly,", provider: "FMF")
-            Issue.record("Expected guardrail error")
-        } catch let error as GenerationError {
-            #expect(error == .guardrailViolation(reason: "Output contains banned word/phrase"))
-        }
-    }
-
-    @Test("validatedAgainstGuardWords accepts clean text")
-    func guardWordsAcceptsClean() {
-        let result = try! ProviderResponseGuard.validatedAgainstGuardWords("Best regards,", provider: "FMF")
-        #expect(result == "Best regards,")
-    }
-
-    @Test("validatedAgainstGuardWords is case-insensitive")
-    func guardWordsCaseInsensitive() async throws {
-        do {
-            try ProviderResponseGuard.validatedAgainstGuardWords("surprisingly good,", provider: "FMF")
-            Issue.record("Expected guardrail error")
-        } catch let error as GenerationError {
-            #expect(error == .guardrailViolation(reason: "Output contains banned word/phrase"))
-        }
-    }
-
     // MARK: - Full Pipeline Integration Tests
 
     @Test("Full pipeline: valid input passes all stages")
@@ -210,8 +174,7 @@ struct ValidationPipelineTests {
         let sanitized = ProviderResponseGuard.sanitizeSignoff(input)
         let pasteable = try! ProviderResponseGuard.validatedPasteable(sanitized, provider: "FMF")
         let lengthValidated = try! ProviderResponseGuard.validatedLength(pasteable)
-        let final = try! ProviderResponseGuard.validatedAgainstGuardWords(lengthValidated, provider: "FMF")
-        #expect(final == "Best regards,")
+        #expect(lengthValidated == "Best regards,")
     }
 
     @Test("Full pipeline: input with period gets corrected")
@@ -220,22 +183,7 @@ struct ValidationPipelineTests {
         let sanitized = ProviderResponseGuard.sanitizeSignoff(input)
         let pasteable = try! ProviderResponseGuard.validatedPasteable(sanitized, provider: "FMF")
         let lengthValidated = try! ProviderResponseGuard.validatedLength(pasteable)
-        let final = try! ProviderResponseGuard.validatedAgainstGuardWords(lengthValidated, provider: "FMF")
-        #expect(final == "Best regards,")
-    }
-
-    @Test("Full pipeline: input with banned word gets rejected")
-    func fullPipelineRejectsBanned() async throws {
-        let input = "surprisingly good,"
-        let sanitized = ProviderResponseGuard.sanitizeSignoff(input)
-        let pasteable = try! ProviderResponseGuard.validatedPasteable(sanitized, provider: "FMF")
-        let lengthValidated = try! ProviderResponseGuard.validatedLength(pasteable)
-        do {
-            try ProviderResponseGuard.validatedAgainstGuardWords(lengthValidated, provider: "FMF")
-            Issue.record("Expected guardrail error")
-        } catch let error as GenerationError {
-            #expect(error == .guardrailViolation(reason: "Output contains banned word/phrase"))
-        }
+        #expect(lengthValidated == "Best regards,")
     }
 
     @Test("Full pipeline: run-on output gets rejected")

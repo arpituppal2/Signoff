@@ -351,6 +351,15 @@ public final class PersistenceController: @unchecked Sendable {
         return try context.fetch(descriptor)
     }
 
+    public func fetchGenerations(forBucket bucketId: String, limit: Int = 10) throws -> [SignoffGeneration] {
+        var descriptor = FetchDescriptor<SignoffGeneration>(
+            predicate: #Predicate { $0.bucketId == bucketId },
+            sortBy: [SortDescriptor(\.createdAt, order: .reverse)]
+        )
+        descriptor.fetchLimit = limit
+        return try context.fetch(descriptor)
+    }
+
     public func recordGeneration(bucketId: String,
                                   text: String,
                                   providerRaw: String,
@@ -386,7 +395,7 @@ public final class PersistenceController: @unchecked Sendable {
 
     /// v3: clear all history entries (except favorites).
     public func clearHistory() throws {
-        var descriptor = FetchDescriptor<SignoffGeneration>(
+        let descriptor = FetchDescriptor<SignoffGeneration>(
             predicate: #Predicate { !$0.isFavorite }
         )
         let all = try context.fetch(descriptor)

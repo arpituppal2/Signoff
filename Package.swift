@@ -10,9 +10,10 @@ let package = Package(
         .library(name: "SignoffCore", targets: ["SignoffCore"]),
         .library(name: "SignoffUI", targets: ["SignoffUI"]),
         .executable(name: "Signoff", targets: ["SignoffApp"]),
+        .executable(name: "ErrorRateHarness", targets: ["ErrorRateHarness"]),
+        .executable(name: "ProviderBench", targets: ["ProviderBench"]),
     ],
     dependencies: [
-        .package(url: "https://github.com/apple/swift-collections.git", from: "1.2.0"),
         .package(url: "https://github.com/apple/swift-testing.git", from: "0.12.0"),
     ],
     targets: [
@@ -53,9 +54,14 @@ let package = Package(
             ]
         ),
         .executableTarget(
-            name: "GenerateDemo",
+            name: "ErrorRateHarness",
             dependencies: ["SignoffCore"],
-            path: "Scripts"
+            path: "Harness"
+        ),
+        .executableTarget(
+            name: "ProviderBench",
+            dependencies: ["SignoffCore"],
+            path: "Bench"
         ),
 
         .testTarget(

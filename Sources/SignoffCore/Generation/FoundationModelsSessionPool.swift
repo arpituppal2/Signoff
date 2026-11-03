@@ -39,7 +39,7 @@ public actor FoundationModelsSessionPool {
 
         // If already prewarmed with same fingerprint, skip
         if let existing = prewarmedEntries[key], existing.instructionsFingerprint == fp {
-            let isResponding = await existing.session.isResponding
+            let isResponding = existing.session.isResponding
             guard !isResponding else { return }
             let prefix: Prompt? = promptPrefix.map { Prompt($0) }
             await existing.session.prewarm(promptPrefix: prefix)
@@ -48,7 +48,7 @@ public actor FoundationModelsSessionPool {
 
         // Create and prewarm new session
         let session = makeSession(instructions: instructions)
-        let isResponding = await session.isResponding
+        let isResponding = session.isResponding
         guard !isResponding else { return }
         let prefix: Prompt? = promptPrefix.map { Prompt($0) }
         await session.prewarm(promptPrefix: prefix)

@@ -10,7 +10,6 @@ public enum SignoffFailure: Equatable, CaseIterable {
     case a11yDenied
     case inputMonitoringDenied
     case fmUnavailable
-    case fallbackExhausted
     case rateLimited
     case storeCorrupt
     case storeInMemoryFallback
@@ -20,7 +19,6 @@ public enum SignoffFailure: Equatable, CaseIterable {
         case .a11yDenied:             return "Accessibility not granted"
         case .inputMonitoringDenied:  return "Input Monitoring not granted"
         case .fmUnavailable:          return "On-device AI not ready"
-        case .fallbackExhausted:      return "Bundled phrases exhausted"
         case .rateLimited:            return "Rate limit reached"
         case .storeCorrupt:           return "Local store was reset"
         case .storeInMemoryFallback:  return "Local store unavailable"
@@ -35,8 +33,6 @@ public enum SignoffFailure: Equatable, CaseIterable {
             return "Global shortcuts (⌃⌥1–4) need Input Monitoring. This is separate from Accessibility."
         case .fmUnavailable:
             return "Your Mac's on-device model isn't ready yet, so Signoff can't draft right now. Enable Apple Intelligence in System Settings and try again — Signoff never falls back to canned text."
-        case .fallbackExhausted:
-            return "We de-duplicated against your last 50 phrases and ran out of fresh options."
         case .rateLimited:
             return "Per Apple HIG, AppIntents are rate-limited to 30 generations/hour for stability."
         case .storeCorrupt:
@@ -54,8 +50,6 @@ public enum SignoffFailure: Equatable, CaseIterable {
             return .openSystemSettings(scheme: InputMonitoringAccess.systemSettingsURL.absoluteString)
         case .fmUnavailable:
             return .message("Your Mac's AI system needs a moment. Try Generate again.")
-        case .fallbackExhausted:
-            return .openSettings(pane: .general)
         case .rateLimited:
             return .message("Try again in an hour.")
         case .storeCorrupt:

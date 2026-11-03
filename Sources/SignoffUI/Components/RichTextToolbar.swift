@@ -226,7 +226,7 @@ public final class RichTextFormatterController: ObservableObject {
         // Auto-fit: never wider than the container minus padding, capped at 240pt
         // so dropped/imported photos don't appear at full pixel size.
         let containerWidth = tv.textContainer?.size.width ?? tv.bounds.width
-        guard let container = tv.textContainer, containerWidth > 0 else { return }
+        guard tv.textContainer != nil, containerWidth > 0 else { return }
         let maxWidth = max(min(containerWidth - 16, 240), 100)
         let displaySize = ScalableImageAttachment.fit(image: image, maxWidth: maxWidth)
         let attachment = ScalableImageAttachment(image: image, displaySize: displaySize)

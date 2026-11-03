@@ -1,0 +1,196 @@
+import Testing
+import Foundation
+@testable import SignoffCore
+
+/// One-by-one test: generate 1, validate 1, count streak. ANY failure
+/// (validator OR providerFailed OR manual test) resets streak to 0.
+/// Goal: 50 in a row per bucket.
+///
+/// Each signoff is printed clearly so it can be manually evaluated against
+/// the CEO test, Universal test, and Redundancy test.
+@MainActor
+@Suite(.serialized)
+struct OneByOneTest {
+
+    private let service = GenerationService.shared
+    private let validator = SignoffQualityValidator.shared
+
+    /// Target count — bump to 50 once prompts pass interactive eval at 10.
+    private let targetCount = 50
+
+    /// Current bucket to run. Set to nil to run all three.
+    private let onlyBucket: String? = "standard"
+
+    private func warmup() async {
+        print("[1x1] FoundationModelsAvailability.probe(): \(FoundationModelsAvailability.probe())")
+        if #available(macOS 26, *) {
+            await FoundationModelsSessionPool.shared.invalidateAll()
+        }
+        await service.warmup()
+        try? await Task.sleep(nanoseconds: 1_000_000_000)
+        print("[1x1] After warmup, FoundationModelsAvailability.probe(): \(FoundationModelsAvailability.probe())")
+    }
+
+    @Test("One-by-one: Standard bucket sequential")
+    func oneByOneStandard() async throws {
+        try await warmup()
+        var streak = 0
+        var totalAttempts = 0
+        var recentHistory: [String] = []
+
+        print("\n=== STANDARD BUCKET — target: \(targetCount) in a row ===\n")
+
+        while streak < targetCount {
+            totalAttempts += 1
+            let result = await service.generate(
+                bucketId: "standard",
+                profile: nil,
+                recentTexts: recentHistory,
+                bypassCache: true
+            )
+
+            switch result {
+            case .success(let outcome):
+                let text = outcome.text
+                let validation = validator.validate(text, forBucket: "standard", recentHistory: recentHistory)
+
+                switch validation {
+                case .valid(let validText):
+                    streak += 1
+                    recentHistory.append(validText)
+                    if recentHistory.count > 50 { recentHistory.removeFirst(recentHistory.count - 50) }
+                    print("[Standard] PASS #\(streak)/\(targetCount) | total attempts: \(totalAttempts) | \"\(validText)\"")
+
+                case .invalid(let reason):
+                    streak = 0
+                    recentHistory.removeAll()
+                    print("[Standard] FAIL (streak reset) | reason: \(reason) | output: \"\(text)\"")
+                }
+
+            case .providerFailed(let reason):
+                streak = 0
+                recentHistory.removeAll()
+                print("[Standard] PROVIDER FAILED (streak reset) | reason: \(reason)")
+
+            case .usageLimitReached:
+                streak = 0
+                recentHistory.removeAll()
+                print("[Standard] USAGE LIMIT (streak reset)")
+            }
+
+            try? await Task.sleep(nanoseconds: 500_000_000)
+        }
+
+        print("\n>>> Standard reached \(streak) in a row! Total attempts: \(totalAttempts)")
+    }
+
+    @Test("One-by-one: Professional bucket sequential")
+    func oneByOneProfessional() async throws {
+        try await warmup()
+        var streak = 0
+        var totalAttempts = 0
+        var recentHistory: [String] = []
+        let tones = [0.2, 0.5, 0.8] // formal, balanced, relaxed
+
+        print("\n=== PROFESSIONAL BUCKET — target: \(targetCount) in a row ===\n")
+
+        while streak < targetCount {
+            totalAttempts += 1
+            let toneValue = tones[(totalAttempts - 1) % tones.count]
+            let result = await service.generate(
+                bucketId: "professional",
+                profile: nil,
+                recentTexts: recentHistory,
+                toneValue: toneValue,
+                bypassCache: true
+            )
+
+            switch result {
+            case .success(let outcome):
+                let text = outcome.text
+                let validation = validator.validate(text, forBucket: "professional", recentHistory: recentHistory)
+
+                switch validation {
+                case .valid(let validText):
+                    streak += 1
+                    recentHistory.append(validText)
+                    if recentHistory.count > 50 { recentHistory.removeFirst(recentHistory.count - 50) }
+                    print("[Professional] PASS #\(streak)/\(targetCount) | total attempts: \(totalAttempts) | \"\(validText)\"")
+
+                case .invalid(let reason):
+                    streak = 0
+                    recentHistory.removeAll()
+                    print("[Professional] FAIL (streak reset) | reason: \(reason) | output: \"\(text)\"")
+                }
+
+            case .providerFailed(let reason):
+                streak = 0
+                recentHistory.removeAll()
+                print("[Professional] PROVIDER FAILED (streak reset) | reason: \(reason)")
+
+            case .usageLimitReached:
+                streak = 0
+                recentHistory.removeAll()
+                print("[Professional] USAGE LIMIT (streak reset)")
+            }
+
+            try? await Task.sleep(nanoseconds: 500_000_000)
+        }
+
+        print("\n>>> Professional reached \(streak) in a row! Total attempts: \(totalAttempts)")
+    }
+
+    @Test("One-by-one: Unhinged bucket sequential")
+    func oneByOneUnhinged() async throws {
+        try await warmup()
+        var streak = 0
+        var totalAttempts = 0
+        var recentHistory: [String] = []
+
+        print("\n=== UNHINGED BUCKET — target: \(targetCount) in a row ===\n")
+
+        while streak < targetCount {
+            totalAttempts += 1
+            let result = await service.generate(
+                bucketId: "unhinged",
+                profile: nil,
+                recentTexts: recentHistory,
+                unhingedLevel: .cynical,
+                bypassCache: true
+            )
+
+            switch result {
+            case .success(let outcome):
+                let text = outcome.text
+                let validation = validator.validate(text, forBucket: "unhinged", recentHistory: recentHistory)
+
+                switch validation {
+                case .valid(let validText):
+                    streak += 1
+                    recentHistory.append(validText)
+                    if recentHistory.count > 50 { recentHistory.removeFirst(recentHistory.count - 50) }
+                    print("[Unhinged] PASS #\(streak)/\(targetCount) | total attempts: \(totalAttempts) | \"\(validText)\"")
+
+                case .invalid(let reason):
+                    streak = 0
+                    recentHistory.removeAll()
+                    print("[Unhinged] FAIL (streak reset) | reason: \(reason) | output: \"\(text)\"")
+                }
+
+            case .providerFailed(let reason):
+                streak = 0
+                recentHistory.removeAll()
+                print("[Unhinged] PROVIDER FAILED (streak reset) | reason: \(reason)")
+
+            case .usageLimitReached:
+                streak = 0
+                recentHistory.removeAll()
+                print("[Unhinged] USAGE LIMIT (streak reset)")
+            }
+
+            try? await Task.sleep(nanoseconds: 500_000_000)
+        }
+
+        print("\n>>> Unhinged reached \(streak) in a row! Total attempts: \(totalAttempts)")
+    }
+}

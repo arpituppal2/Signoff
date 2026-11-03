@@ -256,15 +256,6 @@ public final class AppState {
             }
         }
 
-        // Warm the per-bucket phrase cache from Apple Foundation Models in the
-        // background. The cache starts empty and is filled *only* by the
-        // on-device model — there is no static phrasebook seed — so the model
-        // actually runs and its cost is real.
-        // DISABLED: BucketCache.shared.clearAll()
-        // BucketCache.shared.warmup(buckets: buckets,
-        //                        profile: UserProfileSnapshot(profile: profile),
-        //                        ageGroup: settings.generationAgeGroup)
-
         // DISABLED: warmup/prewarm seems to corrupt content filter state
         // await generation.warmup()
 
@@ -548,10 +539,17 @@ public final class AppState {
         lastStatus = nil
         generation.clearStatus()
 
+        // If this is the footer bucket and no footer is set, show error instead of generating
+        if bucket.id == "custom" && settings.afterSignoffText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            generatedText = "No footer set. Please configure an 'After signoff' in Settings → General."
+            lastStatus = nil
+            return
+        }
+
         let outcome = await generation.generate(
             bucketId: bucket.id,
             profile: profile,
-            recentTexts: recentGenerations.map(\.text),
+            recentTexts: (try? persistence.fetchGenerations(forBucket: bucket.id, limit: 40))?.map { $0.text } ?? [],
             unhingedLevel: bucket.unhingedLevel,
             toneValue: bucket.toneValue,
             postfixMode: bucket.postfixMode,
@@ -630,11 +628,12 @@ public final class AppState {
     /// Append the user's configured "after signoff" text below the generated
     /// signoff in the format: [signoff],\n[afterText]. If empty, returns the
     /// signoff unchanged. Supports rich text (multi-line, images).
+    /// Prepends a zero-width space (U+200B) to enable clean replacement.
     private func applyAfterSignoff(to text: String) -> String {
         let attr = settings.afterSignoffAttributedString
         let trimmed = attr.string.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return text }
-        return "\(text)\n\(trimmed)"
+        guard !trimmed.isEmpty else { return "\u{200B}\(text)" } // Just signoff with ZWS marker if no footer
+        return "\u{200B}\(text)\n\(trimmed)" // Zero-width space + signoff + footer
     }
 
     /// True when rapid-replace is enabled AND this trigger falls inside the
