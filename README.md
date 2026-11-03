@@ -28,24 +28,62 @@ Generation with sufficient model capacity is the only scalable answer. The codeb
 
 ### Bringing your own key
 
-Keys are read from environment variables or the macOS Keychain (never embedded in the binary):
+Keys are read from environment variables or the macOS Keychain (never embedded in the binary) — see **Setup → Configure a cloud model** below for the exact variables and Keychain accounts.
+
+## Setup
+
+### Requirements
+
+- **macOS 26.0 or later** (declared in `Package.swift`)
+- **Xcode / Swift toolchain** (Swift Package Manager project — no `.xcodeproj` needed)
+
+### Build & run
+
+```sh
+git clone https://github.com/arpituppal2/Signoff.git
+cd Signoff
+swift build
+swift test        # full suite; some FM-generation tests are long-running
+```
+
+Run the app from Xcode (open `Package.swift`) or launch the built binary from `.build/`. Signoff lives in the menu bar — look for its icon after launch.
+
+### Grant Accessibility permission
+
+Signoff pastes generated text into whatever field is focused, which requires synthesizing ⌘V. On first use macOS will deny this until you grant access:
+
+1. **System Settings → Privacy & Security → Accessibility**
+2. Enable **Signoff** (the in-app button flips from "Grant Permission" to "Granted ✓" once the probe passes)
+
+Without this, generation still works but pasting fails with `PasteError.accessibilityDenied`.
+
+### Configure a cloud model (recommended)
+
+Without a key, Signoff falls back to the on-device model — see the ⚠️ section above for why that doesn't work well. With a key, set it via environment variable or the macOS Keychain (never embedded in the binary):
 
 | Provider | Env var | Keychain service / account |
 |---|---|---|
 | OpenAI | `SIGNOFF_OPENAI_KEY` | `com.signoff` / `api.openai` |
 | Anthropic | `SIGNOFF_ANTHROPIC_KEY` | `com.signoff` / `api.anthropic` |
-| Exa (fresh examples) | `EXA_API_KEY` | `com.signoff` / `api.exa` |
+| Exa (fresh examples, optional) | `EXA_API_KEY` | `com.signoff` / `api.exa` |
+
+```sh
+export SIGNOFF_OPENAI_KEY="sk-..."   # picked up on next launch
+```
 
 With a key configured, generation quality is dramatically better: coherent, on-bucket, and varied. See [`docs/CLOUD_PLAN.md`](docs/CLOUD_PLAN.md) for the full architecture, including the dev-key + Pro subscription model.
 
-## Building
+### Usage
+
+Press **⌃⌘1–6** in any focused text field to generate and paste a signoff; the bucket is selected by which number you press. Recent generations are managed per-bucket so output doesn't repeat itself.
+
+### Benchmarking (optional)
+
+`Bench/main.swift` runs a single-roll A/B bench per bucket × provider:
 
 ```sh
-swift build
-swift test
+swift run ProviderBench   # writes bench_results.md
 ```
-
-Requires macOS with Xcode / Swift toolchain. `Bench/main.swift` (`swift run ProviderBench`) runs a single-roll A/B bench per bucket × provider and writes `bench_results.md`.
 
 ## Repository layout
 
